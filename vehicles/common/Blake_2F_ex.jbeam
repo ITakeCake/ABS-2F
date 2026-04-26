@@ -1,0 +1,22 @@
+{
+"universal_ABS_Blake_2F_ex": {
+    "information":{"authors":"Blake", "name":"Blake ABS-2F", "value":250},
+    "slotType":[
+        "etk800_ABS", "etkc_ABS", "etki_ABS",
+        "bx_ABS", "covet_ABS", "pessima_ABS", "midsize_ABS",
+        "fullsize_ABS", "legran_ABS", "sunburst2_ABS",
+        "lansdale_ABS", "wendover_ABS",
+        "bastion_DSE_ABS", "sbr_DSE_ABS", "scintilla_DSE_ABS",
+        "sunburst2_DSE_ABS", "vivace_DSE_ABS",
+        "hopper_ABS", "pickup_ABS", "rockbouncer_ABS", "van_ABS"
+    ],
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["Blake_2F_ex", {}]
+    ]
+}
+}
