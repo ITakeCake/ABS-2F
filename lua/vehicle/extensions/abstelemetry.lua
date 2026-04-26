@@ -1,4 +1,4 @@
--- abstelemetry.lua — per-wheel brake application for Blake ABS-2F
+-- abstelemetry.lua — per-wheel brake application for ABS-2F
 --
 -- Keeps per-wheel brake commands set by setBrakes() alive at 2000Hz physics rate.
 -- BeamNG's stock pipeline recomputes wd.ref.brakeTorque every physics substep,

@@ -1,6 +1,6 @@
 {
   "name": "ABS Grip Gauges",
-  "description": "Per-wheel Surface μ / Tire μ + Fused/Plaus/Air/VirtAir speeds for Blake ABS-2F.",
+  "description": "Per-wheel Surface μ / Tire μ + Fused/Plaus/Air/VirtAir speeds for ABS-2F.",
   "author": "Blake",
   "version": "1.3",
   "domElement": "<abs-grip-gauges></abs-grip-gauges>",

@@ -1,7 +1,7 @@
 local M = {}
 M.type = "auxiliary"
 
--- Blake ABS-2F — per-wheel PID anti-lock braking controller.
+-- ABS-2F — per-wheel PID anti-lock braking controller.
 -- Toggle any feature below to false to disable that piece.
 
 -- ===== Toggles =====

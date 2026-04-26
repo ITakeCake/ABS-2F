@@ -1,8 +1,8 @@
-# Blake ABS-2F
+# ABS-2F
 
 A per-wheel PID anti-lock braking controller for BeamNG.drive.
 
-Blake ABS-2F slots into 21 vanilla vehicles automatically. Enable it from the Parts menu under the vehicle's ABS slot.
+ABS-2F slots into 21 vanilla vehicles automatically. Enable it from the Parts menu under the vehicle's ABS slot.
 
 ## Install
 
@@ -12,7 +12,7 @@ Blake ABS-2F slots into 21 vanilla vehicles automatically. Enable it from the Pa
    %LOCALAPPDATA%\BeamNG.drive\<version>\mods\
    ```
    (e.g. `C:\Users\YourName\AppData\Local\BeamNG.drive\0.36\mods\`)
-3. Launch BeamNG, spawn a supported vehicle, open the Parts menu, and select **Blake ABS-2F** under the vehicle's Anti-Lock Braking System slot.
+3. Launch BeamNG, spawn a supported vehicle, open the Parts menu, and select **ABS-2F** under the vehicle's Anti-Lock Braking System slot.
 4. Optional: enable the **ABS Grip Gauges** UI app from the in-game app manager to see live per-wheel surface μ, slip ratios, and fused speeds.
 
 ## Supported vehicles (vanilla BeamNG 0.36)
