@@ -19,7 +19,7 @@ ABS-2F slots into 21 vanilla vehicles automatically. Enable it from the Parts me
 
 | Category | Vehicle |
 |---|---|
-| Sedan / Coupe | Ibishu 200BX, Ibishu Covet, Ibishu Pessima, ETK 800-Series, ETK I-Series, ETK K-Series, Gavril Grand Marshal, Bruckell LeGran, Bruckell Moonhawk / Nine, Hirochi Sunburst 2, Soliad Lansdale, Soliad Wendover |
+| Sedan / Coupe | Ibishu 200BX, Ibishu Covet, Ibishu Pessima (both gens), ETK 800-Series, ETK I-Series, ETK K-Series, Gavril Grand Marshal, Bruckell LeGran, Hirochi Sunburst 2, Soliad Lansdale, Soliad Wendover |
 | Sport | Hirochi Bastion, Hirochi SBR4, Hirochi Scintilla, Hirochi Sunburst 2 DSE, Soliad Vivace |
 | SUV / Truck | Ibishu Hopper, Gavril D-Series, Rock Bouncer, Gavril H-Series |
 
