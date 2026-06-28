@@ -1,9 +1,0 @@
-{
-    "name": "ABS-2F",
-    "authors": "Blake",
-    "version": "1.0.2",
-    "tagid": "abs_2f",
-    "tags": ["brake", "abs", "controller", "vehicle"],
-    "description": "A per-wheel PID anti-lock braking controller with adaptive surface detection, slew-rate-limited yaw management, and plausibility-checked speed fusion. Slots into 21 vanilla vehicles automatically.",
-    "requires_engine_version": "0.36"
-}
