@@ -465,7 +465,7 @@ local function buildWheelMaps()
       error("Could not classify all 4 corner wheels (found " .. foundWheelsCount .. ")")
     end
 
-    print("[ABS-1FEX] (2) wheelToBrakeMap built (stock geometry method): RR="
+    print("[ABS-Dynamic_ABS] (2) wheelToBrakeMap built (stock geometry method): RR="
       .. tostring(wheelToBrakeMap[1]) .. " RL=" .. tostring(wheelToBrakeMap[2])
       .. " FR=" .. tostring(wheelToBrakeMap[3]) .. " FL=" .. tostring(wheelToBrakeMap[4]))
   end)
@@ -473,7 +473,7 @@ local function buildWheelMaps()
   if not ok then
     -- Fallback: identity map
     for i = 1, N_WHEELS do wheelToBrakeMap[i] = i end
-    print("[ABS-1FEX] (2) WARNING: Stock geometry method failed (" .. tostring(err) .. "). Using fallback identity map.")
+    print("[ABS-Dynamic_ABS] (2) WARNING: Stock geometry method failed (" .. tostring(err) .. "). Using fallback identity map.")
   end
 
   rearLogicalIndices  = {1, 2}
@@ -579,16 +579,16 @@ local function buildGeometry(jbeamData)
     end
   end
 
-  print(string.format("[ABS-1FEX] (2) Geometry: WB=%.2fm FRONT_FRAC=%.2f H_CG=%.2fm",
+  print(string.format("[ABS-Dynamic_ABS] (2) Geometry: WB=%.2fm FRONT_FRAC=%.2f H_CG=%.2fm",
     grip.WHEELBASE, grip.FRONT_FRAC, grip.H_CG))
-  print(string.format("[ABS-1FEX] (2) yawOffset: RR=%.3f RL=%.3f FR=%.3f FL=%.3f",
+  print(string.format("[ABS-Dynamic_ABS] (2) yawOffset: RR=%.3f RL=%.3f FR=%.3f FL=%.3f",
     grip.yawOffset[1] or 0, grip.yawOffset[2] or 0,
     grip.yawOffset[3] or 0, grip.yawOffset[4] or 0))
 end
 
 
 local function init(jbeamData)
-  print("[ABS-1FEX] (2) canonical build loaded — per-wheel D + 2 probes (combined + extended) ON")
+  print("[ABS-Dynamic_ABS] (2) canonical build loaded — per-wheel D + 2 probes (combined + extended) ON")
 
   -- Read wheel count first; everything else is sized to this.
   N_WHEELS = wheels.wheelRotatorCount or 4

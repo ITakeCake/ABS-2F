@@ -1,5 +1,5 @@
 {
-"etk_DSE_ABS_1FEX": {
+"etk_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"etk_DSE_ABS",
     "pressureWheels": [
@@ -8,10 +8,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"etk800_ABS_1FEX": {
+"etk800_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"etk800_ABS",
     "pressureWheels": [
@@ -20,10 +20,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"etkc_ABS_1FEX": {
+"etkc_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"etkc_ABS",
     "pressureWheels": [
@@ -32,10 +32,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"etki_ABS_1FEX": {
+"etki_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"etki_ABS",
     "pressureWheels": [
@@ -44,10 +44,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"bx_ABS_1FEX": {
+"bx_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"bx_ABS",
     "pressureWheels": [
@@ -56,10 +56,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"covet_ABS_1FEX": {
+"covet_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"covet_ABS",
     "pressureWheels": [
@@ -68,10 +68,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"pessima_ABS_1FEX": {
+"pessima_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"pessima_ABS",
     "pressureWheels": [
@@ -80,10 +80,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"midsize_ABS_1FEX": {
+"midsize_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"midsize_ABS",
     "pressureWheels": [
@@ -92,10 +92,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"fullsize_ABS_1FEX": {
+"fullsize_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"fullsize_ABS",
     "pressureWheels": [
@@ -104,10 +104,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"legran_ABS_1FEX": {
+"legran_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"legran_ABS",
     "pressureWheels": [
@@ -116,10 +116,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"sunburst2_ABS_1FEX": {
+"sunburst2_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"sunburst2_ABS",
     "pressureWheels": [
@@ -128,10 +128,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"lansdale_ABS_1FEX": {
+"lansdale_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"lansdale_ABS",
     "pressureWheels": [
@@ -140,10 +140,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"wendover_ABS_1FEX": {
+"wendover_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"wendover_ABS",
     "pressureWheels": [
@@ -152,10 +152,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"bastion_DSE_ABS_1FEX": {
+"bastion_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"bastion_DSE_ABS",
     "pressureWheels": [
@@ -164,10 +164,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"sbr_DSE_ABS_1FEX": {
+"sbr_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"sbr_DSE_ABS",
     "pressureWheels": [
@@ -176,10 +176,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"scintilla_DSE_ABS_1FEX": {
+"scintilla_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"scintilla_DSE_ABS",
     "pressureWheels": [
@@ -188,10 +188,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"sunburst2_DSE_ABS_1FEX": {
+"sunburst2_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"sunburst2_DSE_ABS",
     "pressureWheels": [
@@ -200,10 +200,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"vivace_DSE_ABS_1FEX": {
+"vivace_DSE_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"vivace_DSE_ABS",
     "pressureWheels": [
@@ -212,10 +212,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"hopper_ABS_1FEX": {
+"hopper_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"hopper_ABS",
     "pressureWheels": [
@@ -224,10 +224,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"pickup_ABS_1FEX": {
+"pickup_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"pickup_ABS",
     "pressureWheels": [
@@ -236,10 +236,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"rockbouncer_ABS_1FEX": {
+"rockbouncer_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"rockbouncer_ABS",
     "pressureWheels": [
@@ -248,10 +248,10 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 },
-"van_ABS_1FEX": {
+"van_Dynamic_ABS": {
     "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
     "slotType":"van_ABS",
     "pressureWheels": [
@@ -260,7 +260,7 @@
     ],
     "controller": [
         ["fileName"],
-        ["ABS_1FEX", {}]
+        ["Dynamic_ABS", {}]
     ]
 }
 }
