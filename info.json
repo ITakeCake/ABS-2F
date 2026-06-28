@@ -1,0 +1,9 @@
+{
+    "name": "Dynamic ABS",
+    "authors": "Blake",
+    "version": "1.0.0",
+    "tagid": "abs_1fex",
+    "tags": ["brake", "abs", "controller", "vehicle"],
+    "description": "A per-wheel PID anti-lock braking controller with IMU-ceiling speed fusion, dual safety probes, per-wheel grip detection, dynamic vehicle geometry, and brake-rotation assist. Slots into 21 vanilla vehicles automatically.",
+    "requires_engine_version": "0.36"
+}

@@ -1,0 +1,8 @@
+{
+    "Configuration": "Blake-4",
+    "Description": "Custom configuration built for the Dynamic ABS system.",
+    "Config Type": "Mod",
+    "Population": 0,
+    "Value": 35000,
+    "Model": "etkc"
+}

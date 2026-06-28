@@ -1,0 +1,117 @@
+<div class="bngApp absGripRoot">
+  <style>
+    .absGripRoot {
+      width: 100%;
+      height: 100%;
+      background: rgba(140, 140, 140, 0.78);
+      color: #f5f5f5;
+      box-sizing: border-box;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      container-type: size;
+      overflow: hidden;
+    }
+    .absGripGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      width: 100%;
+      height: 100%;
+      gap: 1px;
+      background: rgba(80, 80, 80, 0.55);
+    }
+    .absGripCell {
+      background: rgba(160, 160, 160, 0.78);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0.5cqh 0.5cqw;
+      box-sizing: border-box;
+      overflow: hidden;
+      text-align: center;
+    }
+    /* Single shared sizing rule: clamp by BOTH container height (cqh) and width (cqw)
+       so text scales up freely until it would overflow horizontally. The cqw cap is
+       tuned for the longest line ("Surface μ: 1.00") in the wheel cells. */
+    /* Wheel cells fit 3 lines (label + 2 rows) in 50cqh of vertical room. With
+       line-height 1.05, max font ≈ 50/(3*1.05) ≈ 15.8cqh. Use 14cqh for safety
+       margin (descenders, padding). Same value on speed cells so they visually
+       match — speed cells just have more breathing room since they only show 2 lines. */
+    .absGripCell .label,
+    .absGripCell .row,
+    .speedCell .speedRow {
+      font-size: min(14cqh, 5.5cqw);
+      line-height: 1.05;
+      white-space: nowrap;
+    }
+    .absGripCell .label {
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #ffffff;
+    }
+    .absGripCell .row {
+      color: #f5f5f5;
+    }
+    .absGripCell .row .v {
+      font-variant-numeric: tabular-nums;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .speedCell .speedRow {
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      font-variant-numeric: tabular-nums;
+    }
+    .speedCell .speedRow.fused-active { color: rgb(80, 220, 120); }
+    .speedCell .speedRow.muted { color: #f0f0f0; }
+    .blankCell { background: rgba(140, 140, 140, 0.5); }
+  </style>
+  <div class="absGripGrid">
+    <!-- Row 1: FL | FR | Fused/Plaus | blank -->
+    <div class="absGripCell">
+      <div class="label">FL</div>
+      <div class="row">Surface μ:&nbsp;<span class="v">{{ gripData.FL.surfaceMu }}</span></div>
+      <div class="row">Slip μ:&nbsp;<span class="v">{{ gripData.FL.slipMu }}</span></div>
+    </div>
+    <div class="absGripCell">
+      <div class="label">FR</div>
+      <div class="row">Surface μ:&nbsp;<span class="v">{{ gripData.FR.surfaceMu }}</span></div>
+      <div class="row">Slip μ:&nbsp;<span class="v">{{ gripData.FR.slipMu }}</span></div>
+    </div>
+    <div class="absGripCell speedCell">
+      <div class="speedRow muted">Fused&nbsp;<span ng-class="{'fused-active': speedData.fusedActive}">{{ speedData.fusedSpeed }}</span></div>
+      <div class="speedRow muted">Plaus&nbsp;<span class="v">{{ speedData.plausibleSpeed }}</span></div>        
+    </div>
+    <div class="absGripCell speedCell">
+      <div class="speedRow muted">Fast&nbsp;<span class="v">{{ speedData.probeFastCount }}</span></div>
+      <div class="speedRow muted">Drift&nbsp;<span class="v">{{ speedData.probeDriftCount }}</span></div>
+    </div>
+    <div class="absGripCell speedCell">
+      <div class="speedRow muted">IMU&nbsp;<span class="v">{{ speedData.imuSpeed }}</span></div>
+      <div class="speedRow muted">Clamp&nbsp;<span class="v">{{ speedData.imuClampCount }}</span></div>
+    </div>
+    <!-- Row 2: RL | RR | Air/VirtAir | Snaps | blank -->
+    <div class="absGripCell">
+      <div class="label">RL</div>
+      <div class="row">Surface μ:&nbsp;<span class="v">{{ gripData.RL.surfaceMu }}</span></div>
+      <div class="row">Slip μ:&nbsp;<span class="v">{{ gripData.RL.slipMu }}</span></div>
+    </div>
+    <div class="absGripCell">
+      <div class="label">RR</div>
+      <div class="row">Surface μ:&nbsp;<span class="v">{{ gripData.RR.surfaceMu }}</span></div>
+      <div class="row">Slip μ:&nbsp;<span class="v">{{ gripData.RR.slipMu }}</span></div>
+    </div>
+    <div class="absGripCell speedCell">
+      <div class="speedRow muted">Air&nbsp;<span class="v">{{ speedData.airspeed }}</span></div>
+      <div class="speedRow muted">VirtAir&nbsp;<span class="v">{{ speedData.virtualAirspeed }}</span></div>     
+    </div>
+    <div class="absGripCell speedCell blankCell">
+      <div class="speedRow muted">SnapUp&nbsp;<span class="v">{{ speedData.snapUpCount }}</span></div>
+      <div class="speedRow muted">SnapRej&nbsp;<span class="v">{{ speedData.snapUpRejCount }}</span></div>
+    </div>
+    <div class="absGripCell speedCell blankCell">
+      <div class="speedRow muted">LockupGd&nbsp;<span class="v">{{ speedData.lockupGuardCount }}</span></div>
+      <div class="speedRow muted">N/A</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,5 @@
+*.zip
+*.bak
+Blake_2F_ex_logs/
+.DS_Store
+Thumbs.db

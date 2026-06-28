@@ -1,0 +1,266 @@
+{
+"etk_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"etk_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"etk800_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"etk800_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"etkc_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"etkc_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"etki_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"etki_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"bx_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"bx_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"covet_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"covet_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"pessima_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"pessima_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"midsize_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"midsize_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"fullsize_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"fullsize_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"legran_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"legran_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"sunburst2_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"sunburst2_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"lansdale_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"lansdale_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"wendover_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"wendover_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"bastion_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"bastion_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"sbr_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"sbr_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"scintilla_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"scintilla_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"sunburst2_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"sunburst2_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"vivace_DSE_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"vivace_DSE_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"hopper_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"hopper_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"pickup_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"pickup_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"rockbouncer_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"rockbouncer_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+},
+"van_ABS_1FEX": {
+    "information":{"authors":"Blake", "name":"Dynamic ABS", "value":250},
+    "slotType":"van_ABS",
+    "pressureWheels": [
+        ["name","hubGroup","group","node1:","node2:","nodeS","nodeArm:","wheelDir"],
+        {"enableABS":false}
+    ],
+    "controller": [
+        ["fileName"],
+        ["ABS_1FEX", {}]
+    ]
+}
+}
