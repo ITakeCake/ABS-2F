@@ -1,7 +1,7 @@
 {
     "Configuration": "Blake-2",
     "Description": "Custom configuration built for the Dynamic ABS system.",
-    "Config Type": "Mod",
+    "Config Type": "Custom",
     "Population": 0,
     "Value": 35000,
     "Model": "etk800"

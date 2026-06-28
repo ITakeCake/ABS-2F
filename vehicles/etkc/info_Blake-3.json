@@ -1,7 +1,7 @@
 {
     "Configuration": "Blake-3",
     "Description": "Control configuration using the stock BeamNG ABS system for comparison.",
-    "Config Type": "Mod",
+    "Config Type": "Custom",
     "Population": 0,
     "Value": 35000,
     "Model": "etkc"
