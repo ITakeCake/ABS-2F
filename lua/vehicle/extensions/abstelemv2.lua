@@ -1,4 +1,4 @@
--- abstelemetry.lua — per-wheel brake application for ABS-2F
+-- abstelemv2.lua: per-wheel brake application hook for Dynamic ABS
 --
 -- Hooks into the native setWheelBrakeUpdate callback to flawlessly support
 -- thermal brake models and race brakes without manual brakeTorque clobbering.

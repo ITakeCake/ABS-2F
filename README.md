@@ -1,73 +1,65 @@
 # BeamNG Dynamic ABS
 
-An advanced, adaptive anti-lock braking controller for BeamNG.drive that actively responds to changing conditions. 
+An adaptive anti-lock braking controller for BeamNG.drive. It replaces the built-in ABS logic on 21 vanilla vehicles with a per-wheel slip controller that estimates true ground speed from wheel speeds and the IMU, estimates the grip of each wheel while braking, and moves its slip target to where that grip peaks.
 
-### What makes it Dynamic?
-Unlike standard static ABS controllers, this system:
-- **Fuses Telemetry Data:** Combines wheel speeds with IMU (accelerometer) data to calculate the true ground speed of the vehicle, even when all four wheels are locked or airborne.
-- **Adapts to Surface Grip:** Continuously estimates the current surface friction (D-Estimator) and dynamically adjusts the target wheel slip. It knows the difference between asphalt and ice and changes its braking strategy accordingly.
-- **Per-Wheel Optimization:** Each wheel runs its own independent PID control loop and grip estimator, meaning you can brake safely even with two wheels on tarmac and two wheels on wet grass.
-- **Dynamic Vehicle Geometry:** Uses yaw rates and vehicle width/length to calculate the exact speed of *each individual wheel hub* during turns, rather than relying on a single center-of-mass speed.
+## What it does
+
+- **Fused ground speed.** Wheel speeds are combined with the longitudinal accelerometer, so the controller still knows how fast the car is moving when all four wheels are locked, in the air, or landing from a bump.
+- **Per-wheel grip estimate.** A torque-balance estimator (D estimator) tracks the friction each tyre is producing and shifts the slip target of that wheel toward the grip peak, on asphalt, in the wet, on ice.
+- **Independent wheels.** Each wheel runs its own PID loop against its own target, so two wheels on tarmac and two on grass are regulated separately.
+- **Hub speeds in corners.** Yaw rate and track width give the speed of each wheel hub, so the inner and outer wheels are compared against their own reference rather than the centre of the car.
+- **Loose-surface regime.** When the decel level and the grip estimate say sand, gravel or dirt, the controller probes a locked wheel for under half a second and keeps it only if the car slows faster. It backs out as soon as asphalt is detected again.
 
 ## Install
 
-1. Copy the repository folder into `%LOCALAPPDATA%\BeamNG.drive\<version>\mods\unpacked\Dynamic_ABS` (or zip it and drop
-   the zip into `mods`).
-2. In the vehicle configurator pick **Dynamic ABS** in the ABS slot (21 vanilla vehicles have the part).
-3. Optional: add the **ABS Grip Gauges** app from the UI app menu to watch per-wheel grip, fused speed and the
-   regime counters.
+1. Copy the repository folder into `%LOCALAPPDATA%\BeamNG.drive\<version>\mods\unpacked\Dynamic_ABS`, or zip it and drop the zip into `mods`.
+2. In the vehicle configurator choose **Dynamic ABS** in the ABS slot. The part exists for bastion, bx, covet, etk800, etkc, etki, fullsize, hopper, lansdale, legran, midsize, pessima, pickup, rockbouncer, sbr, scintilla, sunburst, van, vivace and wendover.
+3. Optional: add the **ABS Grip Gauges** app from the UI app menu to see per-wheel grip, fused speed and the regime counters while driving.
 
-Development switches live at the top of `lua/vehicle/controller/Dynamic_ABS.lua` (`ENABLE_IMU_LOG`, `USE_FIXED_SLIP_TARGET`,
-the `d2` and `deep` tables). All off or at their tested values by default.
+Development switches sit at the top of `lua/vehicle/controller/Dynamic_ABS.lua`: `ENABLE_IMU_LOG`, `USE_FIXED_SLIP_TARGET`, and the `d2` and `deep` tables. They ship at the values used for the measurements below.
 
-## Results: 10-run straight-line and 3-run cornering campaign (2026-09-05)
+## Measured against the built-in ABS
 
-Full tables, charts and the raw CSVs are in [results/RESULTS.md](results/RESULTS.md); spreadsheet layout in
-[results/RESULTS_SHEET.md](results/RESULTS_SHEET.md) and [results/results.xlsx](results/results.xlsx). Same etk800, same wheels,
-tyres and brakes, only the ABS part differs. Every stop is measured by the BrakeTest mod's 2 kHz state machine.
+Every number here comes from the BrakeTest mod's 2 kHz measurement, the same code path the BrakeTestGUI uses: stopping distance is the straight chord from the point where true speed crosses the target speed down to 1 m/s, and average g is the kinematic value v squared over 2d. Same etk800, same wheels, tyres and brakes for every controller, only the ABS part changes.
 
-**Straight line, smallgrid, 10 runs per cell (mean g, mean distance):**
+Full tables, charts and raw per-run CSVs: [results/RESULTS.md](results/RESULTS.md). Spreadsheet layout, one row per condition with the cars side by side: [results/RESULTS_SHEET.md](results/RESULTS_SHEET.md) and [results/results.xlsx](results/results.xlsx).
 
-| Speed | DynamicABS | Stock ABS | Δ g |
+### Straight line, 10 runs per speed (2026-09-05)
+
+| Speed | Dynamic ABS | Built-in ABS | Difference |
 |---|---|---|---|
-| 60 mph | 1.196 g, 30.6 m | 1.170 g, 31.3 m | +0.025 |
-| 80 mph | 1.207 g, 54.0 m | 1.192 g, 54.7 m | +0.016 |
-| 120 mph | 1.204 g, 121.7 m | 1.200 g, 122.2 m | +0.005 |
-| 160 mph | 1.212 g, 215.1 m | 1.203 g, 216.8 m | +0.009 |
+| 60 mph | 1.196 g, 30.6 m | 1.170 g, 31.3 m | +0.025 g |
+| 80 mph | 1.207 g, 54.0 m | 1.192 g, 54.7 m | +0.016 g |
+| 120 mph | 1.204 g, 121.7 m | 1.200 g, 122.2 m | +0.005 g |
+| 160 mph | 1.212 g, 215.1 m | 1.203 g, 216.8 m | +0.009 g |
 
-**Braking while cornering at 60 mph**, brake 0.75 to 1.00 in 0.05 steps, steer 0.05 to 1.00, single corner and
-left-then-right double corner, 3 runs per cell, 288 paired stops:
+Run to run spread is under 0.002 g except for one 60 mph outlier at 1.123 g, which is left in the data.
 
-| Metric (paired means) | DynamicABS | Stock ABS | DynamicABS better in |
+### Braking while cornering at 60 mph, 3 runs per cell (2026-09-05)
+
+Brake and steer are applied together at 62 mph. Brake input 0.75 to 1.00 in 0.05 steps, steer input 0.05 to 1.00, two patterns: hold a left turn for the whole stop, or turn left and after one second turn right by a second random amount. 288 paired stops per controller.
+
+| Metric, paired means | Dynamic ABS | Built-in ABS | Dynamic ABS shorter in |
 |---|---|---|---|
-| Stopping distance (chord) | 40.5 m | 41.8 m | 197 / 288 |
-| Path length | 42.7 m | 43.7 m | 191 / 288 |
-| Time to stop | 2.92 s | 2.97 s | 192 / 288 |
+| Stopping distance, chord | 40.5 m | 41.8 m | 197 of 288 |
+| Path length | 42.7 m | 43.7 m | 191 of 288 |
+| Time to stop | 2.92 s | 2.97 s | 192 of 288 |
 
-DynamicABS wins every paired stop from 0.10 to 0.25 steer (shorter path and shorter time, so it is braking harder,
-not just turning more). At 0.50 and 0.75 steer the stock ABS stops about 1 to 3 m shorter and DynamicABS carries
-15 to 19° more yaw. Adding traction and stability control to the stock car changed nothing measurable.
+Dynamic ABS wins every paired stop from 0.10 to 0.25 steer, with a shorter path and a shorter time, so it is braking harder rather than turning more. At 0.50 and 0.75 steer the built-in ABS stops 1 to 3 m shorter and Dynamic ABS carries 15 to 19 degrees more yaw. Adding traction and stability control to the built-in car changed nothing measurable.
 
-![straight](results/straight.png)
-![corner single](results/corner_single.png)
+<img src="results/straight.png" alt="straight line results">
+<img src="results/corner_single.png" alt="single corner results">
 
-## Results: DynamicABS vs stock ABS (2026-09-04)
+### Surfaces and terrain, one run per stop (2026-09-04)
 
-25 recorded stops on gridmap_v2 with the etk800: asphalt at 30 to 120 mph, ice, grass, sand, 15° and 35° inclines,
-a small jump, a bump, and two rough-road sections. Same start point and stop line for both controllers, one run per
-stop, standard 2 kHz brake metric (average deceleration from the target speed down to 1 m/s). Bump and jump stops
-vary about ±0.05 g from run to run; flat stops repeat within 0.005 g.
+25 recorded stops on gridmap_v2: asphalt at 30 to 120 mph, ice, grass, sand, 15 and 35 degree inclines, a small jump, a bump and two rough road sections, same start point and stop line for both controllers. Bump and jump stops vary about 0.05 g from run to run, flat stops repeat within 0.005 g.
 
-| Controller | Mean g (25 stops) | Total stopping distance (m) | Stops shorter than stock | Worst single stop vs stock (g) |
+| Controller | Mean g, 25 stops | Total stopping distance | Stops shorter than built-in | Worst single stop |
 |---|---|---|---|---|
-| **DynamicABS, current build (2026-09-04)** | 1.0075 | 888.2 | 13 / 25 | -0.036 |
-| Stock ABS (BeamNG built-in) | 0.9965 | 910.8 | 0 / 25 | +0.000 |
-| DynamicABS before the bump work (2026-08-31) | 0.9869 | 898.2 | 10 / 25 | -0.145 |
+| Dynamic ABS | 1.0075 | 888.2 m | 13 of 25 | 0.036 g behind |
+| Built-in ABS | 0.9965 | 910.8 m | | |
 
-The controller in this repository is the 2026-09-05 build measured above (fused-speed re-anchoring, the non-circular
-per-wheel grip estimator and the banded loose-surface regime).
-
-| Stop | Speed | Stock ABS (g) | DynamicABS (g) | Δ (g) | Stock (m) | DynamicABS (m) |
+| Stop | Speed | Built-in (g) | Dynamic (g) | Difference (g) | Built-in (m) | Dynamic (m) |
 |---|---|---|---|---|---|---|
 | Asphalt A S1 | 60 mph | 1.304 | 1.307 | +0.003 | 28.1 | 28.0 |
 | Asphalt A S1 | 90 mph | 1.461 | 1.454 | -0.006 | 56.5 | 56.7 |
@@ -80,8 +72,8 @@ per-wheel grip estimator and the banded loose-surface regime).
 | Grass S2 | 60 mph | 0.637 | 0.634 | -0.003 | 57.5 | 57.7 |
 | Sand S1 | 60 mph | 0.698 | 0.706 | +0.008 | 52.4 | 51.8 |
 | Sand S2 | 60 mph | 0.695 | 0.679 | -0.016 | 52.7 | 53.9 |
-| Incline 15° S1 | 45 mph | 1.560 | 1.588 | +0.028 | 13.2 | 13.0 |
-| Incline 35° S1 | 45 mph | 1.626 | 1.605 | -0.022 | 12.7 | 12.8 |
+| Incline 15 deg S1 | 45 mph | 1.560 | 1.588 | +0.028 | 13.2 | 13.0 |
+| Incline 35 deg S1 | 45 mph | 1.626 | 1.605 | -0.022 | 12.7 | 12.8 |
 | Small jump S1 | 30 mph | 0.572 | 0.614 | +0.041 | 15.9 | 14.9 |
 | Small jump S2 | 30 mph | 0.962 | 0.928 | -0.033 | 9.5 | 9.8 |
 | Small jump S3 | 30 mph | 0.585 | 0.715 | +0.130 | 15.6 | 12.8 |
@@ -94,3 +86,19 @@ per-wheel grip estimator and the banded loose-surface regime).
 | Rough road 2 S3 | 25 mph | 0.881 | 0.857 | -0.024 | 7.2 | 7.4 |
 | Straight S2 | 120 mph | 1.173 | 1.179 | +0.007 | 125.0 | 124.3 |
 | Straight S3 | 120 mph | 1.176 | 1.181 | +0.005 | 124.7 | 124.1 |
+
+The 2026-09-04 table was taken with the build of that day. The 2026-09-05 campaign and the controller in this repository add the banded loose-surface regime on top of it.
+
+## Repository layout
+
+- `lua/vehicle/controller/Dynamic_ABS.lua`: the controller.
+- `lua/vehicle/extensions/abstelemv2.lua`: per-wheel brake torque hook, so thermal and race brake models keep working.
+- `ui/modules/apps/ABSGripGauges/`: the in-game gauges app.
+- `vehicles/<car>/Dynamic_ABS.jbeam`: the ABS part for each supported vehicle.
+- `results/`: measurements, charts, spreadsheet and raw CSVs.
+
+## Known limits
+
+- Tuned and measured on the etk800. The other vehicles use the same gains with their own jbeam slip targets and have not been measured to the same depth.
+- At 0.50 steer and above the car is sliding on saturated front tyres with either controller. Dynamic ABS lets the car rotate a little more there, which costs 1 to 3 m at 60 mph.
+- On ice the built-in ABS and Dynamic ABS are within a few hundredths of a g of each other. The loose-surface regime never engages there by design.

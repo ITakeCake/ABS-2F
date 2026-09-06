@@ -4,7 +4,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Straight line, average g
 
-| mph | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Δ Dyn−Stock |
+| mph | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 60 | 10 | 1.196 | 1.123 | 1.205 | 0.025 | 10 | 1.17 | 1.163 | 1.177 | 0.004 | 0.026 |
 | 80 | 10 | 1.207 | 1.206 | 1.208 | 0.001 | 10 | 1.192 | 1.19 | 1.193 | 0.001 | 0.015 |
@@ -13,7 +13,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Straight line, stopping distance (m)
 
-| mph | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Δ Dyn−Stock |
+| mph | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 60 | 10 | 30.64 | 30.38 | 32.6 | 0.69 | 10 | 31.29 | 31.11 | 31.48 | 0.11 | -0.65 |
 | 80 | 10 | 53.95 | 53.92 | 54.01 | 0.03 | 10 | 54.66 | 54.59 | 54.75 | 0.06 | -0.71 |
@@ -22,7 +22,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner single, average g (3 runs per cell)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 1.111 | 1.109 | 1.113 | 0.002 | 3 | 1.08 | 1.079 | 1.082 | 0.002 | 3 | 1.082 | 1.079 | 1.085 | 0.003 | 0.031 |
 | 0.75 | 0.1 | 3 | 1.039 | 1.035 | 1.044 | 0.005 | 3 | 1.006 | 1 | 1.015 | 0.008 | 3 | 1.01 | 1.008 | 1.013 | 0.003 | 0.033 |
@@ -75,7 +75,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner single, stopping distance (m) (3 runs per cell)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 32.97 | 32.89 | 33.03 | 0.07 | 3 | 33.91 | 33.85 | 33.94 | 0.05 | 3 | 33.86 | 33.75 | 33.93 | 0.1 | -0.94 |
 | 0.75 | 0.1 | 3 | 35.26 | 35.08 | 35.38 | 0.16 | 3 | 36.4 | 36.07 | 36.62 | 0.29 | 3 | 36.25 | 36.16 | 36.33 | 0.09 | -1.14 |
@@ -128,7 +128,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner single, accumulated yaw (deg) (3 runs per cell)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 11.8 | 11.7 | 11.9 | 0.1 | 3 | 12 | 11.9 | 12.1 | 0.1 | 3 | 12 | 11.9 | 12 | 0.1 | -0.2 |
 | 0.75 | 0.1 | 3 | 29.9 | 29.8 | 30 | 0.1 | 3 | 26.1 | 25.7 | 26.3 | 0.3 | 3 | 26.1 | 26 | 26.1 | 0.1 | 3.8 |
@@ -181,7 +181,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner single, understeer (deg) (3 runs per cell)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 0.6 | 0.6 | 0.6 | 0 | 3 | 0.53 | 0.5 | 0.6 | 0.06 | 3 | 0.6 | 0.6 | 0.6 | 0 | 0.07 |
 | 0.75 | 0.1 | 3 | 0.73 | 0.7 | 0.8 | 0.06 | 3 | 1.1 | 1.1 | 1.1 | 0 | 3 | 1.07 | 1 | 1.1 | 0.06 | -0.37 |
@@ -234,7 +234,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner double, average g (3 runs per cell, second steer pooled)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 1.084 | 1.034 | 1.112 | 0.044 | 3 | 1.041 | 0.959 | 1.083 | 0.071 | 3 | 1.038 | 0.948 | 1.088 | 0.078 | 0.043 |
 | 0.75 | 0.1 | 3 | 1.002 | 0.985 | 1.033 | 0.027 | 3 | 0.957 | 0.923 | 1.014 | 0.05 | 3 | 0.95 | 0.916 | 1.006 | 0.049 | 0.045 |
@@ -287,7 +287,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner double, stopping distance (m) (3 runs per cell, second steer pooled)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 33.8 | 32.93 | 35.42 | 1.4 | 3 | 35.29 | 33.8 | 38.19 | 2.51 | 3 | 35.43 | 33.65 | 38.61 | 2.76 | -1.49 |
 | 0.75 | 0.1 | 3 | 36.57 | 35.44 | 37.17 | 0.97 | 3 | 38.33 | 36.1 | 39.68 | 1.94 | 3 | 38.63 | 36.41 | 39.99 | 1.94 | -1.76 |
@@ -340,7 +340,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner double, accumulated yaw (deg) (3 runs per cell, second steer pooled)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 23.3 | 8.7 | 52.3 | 25.1 | 3 | 26.9 | 11.6 | 57.6 | 26.6 | 3 | 28.2 | 11.4 | 61.7 | 29 | -3.6 |
 | 0.75 | 0.1 | 3 | 51.3 | 33.8 | 60.6 | 15.2 | 3 | 52.2 | 30.5 | 64.4 | 18.8 | 3 | 53.4 | 30.7 | 66.6 | 19.8 | -0.9 |
@@ -393,7 +393,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner double, understeer (deg) (3 runs per cell, second steer pooled)
 
-| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 3 | 6.17 | 0.7 | 17.1 | 9.47 | 3 | 6.63 | 0.6 | 18.7 | 10.45 | 3 | 6.73 | 0.6 | 19 | 10.62 | -0.46 |
 | 0.75 | 0.1 | 3 | 4.33 | 1.2 | 6 | 2.72 | 3 | 4.93 | 1.5 | 6.7 | 2.97 | 3 | 4.93 | 1.5 | 6.7 | 2.97 | -0.6 |
@@ -446,7 +446,7 @@ One row per test condition, the three cars side by side. n = runs, g = average d
 
 ## Corner double, stopping distance (m) per run with the second steer amount
 
-| brake | steer | steer2 | rep | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Δ Dyn−Stock |
+| brake | steer | steer2 | rep | DynamicABS n | DynamicABS mean | DynamicABS min | DynamicABS max | DynamicABS sd | Stock ABS n | Stock ABS mean | Stock ABS min | Stock ABS max | Stock ABS sd | Stock ABS+TC+ESC n | Stock ABS+TC+ESC mean | Stock ABS+TC+ESC min | Stock ABS+TC+ESC max | Stock ABS+TC+ESC sd | Dyn minus Stock |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 0.75 | 0.05 | 0.05 | 1 | 1 | 33.07 | 33.07 | 33.07 |  | 1 | 33.8 | 33.8 | 33.8 |  | 1 | 33.65 | 33.65 | 33.65 |  | -0.73 |
 | 0.75 | 0.05 | 0.05 | 3 | 1 | 32.93 | 32.93 | 32.93 |  | 1 | 33.89 | 33.89 | 33.89 |  | 1 | 34.03 | 34.03 | 34.03 |  | -0.96 |
