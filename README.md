@@ -50,6 +50,10 @@ Dynamic ABS wins every paired stop from 0.10 to 0.25 steer, with a shorter path 
 <img src="results/straight.png" alt="straight line results">
 <img src="results/corner_single.png" alt="single corner results">
 
+The second chart puts the two things a driver wants on one plot: how far the car actually rotated during the stop (x axis) against how far it travelled (y axis), one point per steer input. For the same amount of rotation Dynamic ABS stops shorter at every brake level. The 0.50 and 0.75 steer cells where it loses on distance are the points furthest right: the car turned 15 to 19 degrees more, and that extra rotation is what the distance was spent on.
+
+<img src="results/corner_single_tradeoff.png" alt="single corner turn versus distance">
+
 ### Surfaces and terrain, one run per stop (2026-09-04)
 
 25 recorded stops on gridmap_v2: asphalt at 30 to 120 mph, ice, grass, sand, 15 and 35 degree inclines, a small jump, a bump and two rough road sections, same start point and stop line for both controllers. Bump and jump stops vary about 0.05 g from run to run, flat stops repeat within 0.005 g.

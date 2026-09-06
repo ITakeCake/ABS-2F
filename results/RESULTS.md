@@ -203,6 +203,8 @@ Stops shorter than stock by more than 5 cm: 197 of 288, longer: 89. DynamicABS i
 
 <img src="corner_single.png" alt="corner single results">
 
+<img src="corner_single_tradeoff.png" alt="corner single turn versus distance">
+
 ### Double corner: left turn, then after 1 s the opposite direction at a second (random, logged) amount
 
 Second-corner amounts by cell (rep 1 / 2 / 3), identical for every car:
@@ -365,3 +367,5 @@ Second-corner amounts by cell (rep 1 / 2 / 3), identical for every car:
 | Stock ABS + TC + ESC | 144 | 0.901 | 135.3 | 54 | 8.6 | 94.0 |
 
 <img src="corner_double.png" alt="corner double results">
+
+<img src="corner_double_tradeoff.png" alt="corner double turn versus distance">
