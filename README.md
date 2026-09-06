@@ -47,12 +47,12 @@ Brake and steer are applied together at 62 mph. Brake input 0.75 to 1.00 in 0.05
 
 Dynamic ABS wins every paired stop from 0.10 to 0.25 steer, with a shorter path and a shorter time, so it is braking harder rather than turning more. At 0.50 and 0.75 steer the stock ABS stops 1 to 3 m shorter and Dynamic ABS carries 15 to 19 degrees more yaw. Adding traction and stability control to the stock car changed nothing measurable.
 
-<img src="results/straight.png" alt="straight line results">
-<img src="results/corner_single.png" alt="single corner results">
+<img src="results/charts/straight.png" alt="straight line results">
+<img src="results/charts/corner_single.png" alt="single corner results">
 
-The second chart shows how far the car actually rotated during each stop against the same steer inputs. From 0.10 to 0.25 steer Dynamic ABS turns the same amount or slightly less while stopping shorter, so that gain is pure braking. At 0.50 and 0.75 steer it rotates 13 to 18 degrees more than Stock ABS, which is where the extra 1 to 3 m of distance goes.
+The second chart shows how far the car actually rotated during each stop against the same steer inputs. It is not a score: higher only means the car turned further, and above the dashed 90 degree line the car has swapped ends. From 0.10 to 0.25 steer Dynamic ABS turns the same amount or slightly less while stopping shorter, so that gain is pure braking. At 0.50 and 0.75 steer it rotates 13 to 18 degrees more than Stock ABS, which is where the extra 1 to 3 m of distance goes.
 
-<img src="results/corner_single_rotation.png" alt="single corner rotation">
+<img src="results/charts/corner_single_rotation.png" alt="single corner rotation">
 
 ### Surfaces and terrain, one run per stop (2026-09-04)
 

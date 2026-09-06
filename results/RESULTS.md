@@ -21,7 +21,7 @@ Source: `campaign_straight_20260905_1541.csv`. Per cell: n runs, average deceler
 | 160 mph | DynamicABS | 10 | **1.212** | 1.211 | 1.213 | 0.0008 | 215.11 | 705.7 | +0.009 |
 | 160 mph | Stock ABS | 10 | **1.203** | 1.202 | 1.203 | 0.0004 | 216.75 | 711.1 |  |
 
-<img src="straight.png" alt="straight line results">
+<img src="charts/straight.png" alt="straight line results">
 
 ## Braking while cornering (smallgrid, 60 mph)
 
@@ -201,9 +201,9 @@ Stops shorter than stock by more than 5 cm: 197 of 288, longer: 89. DynamicABS i
 | Stock ABS | 144 | 0.883 | 139.1 | 60 | 8.5 | 93.3 |
 | Stock ABS + TC + ESC | 144 | 0.884 | 139.0 | 61 | 8.5 | 93.3 |
 
-<img src="corner_single.png" alt="corner single results">
+<img src="charts/corner_single.png" alt="corner single results">
 
-<img src="corner_single_rotation.png" alt="corner single rotation">
+<img src="charts/corner_single_rotation.png" alt="corner single rotation">
 
 ### Double corner: left turn, then after 1 s the opposite direction at a second (random, logged) amount
 
@@ -366,6 +366,6 @@ Second-corner amounts by cell (rep 1 / 2 / 3), identical for every car:
 | Stock ABS | 144 | 0.902 | 135.1 | 53 | 8.6 | 94.1 |
 | Stock ABS + TC + ESC | 144 | 0.901 | 135.3 | 54 | 8.6 | 94.0 |
 
-<img src="corner_double.png" alt="corner double results">
+<img src="charts/corner_double.png" alt="corner double results">
 
-<img src="corner_double_rotation.png" alt="corner double rotation">
+<img src="charts/corner_double_rotation.png" alt="corner double rotation">
