@@ -1,5 +1,7 @@
 # DynamicABS vs stock ABS: measured results
 
+Spreadsheet view (one row per condition, cars side by side): [RESULTS_SHEET.md](RESULTS_SHEET.md), workbook [results.xlsx](results.xlsx).
+
 Test date 2026-09-05. All numbers come from the BrakeTest mod's own 2 kHz measurement (the same code the BrakeTestGUI uses): distance is the straight chord from the point where true speed crosses the target down to 1 m/s, average g is the kinematic v²/2d value, both sampled in the physics step.
 
 Cars: etk800 with the same wheels, tyres and brakes, differing only in the DSE ABS part (`DynamicABS1` = this controller, `StockABS1` = BeamNG's built-in ABS, `StockABSTCESC1` = built-in ABS with traction and stability control, cornering only). BeamNG.tech 0.37.6 headless on smallgrid with the physics speed factor raised; the 60 and 120 mph straight stops match the real-time BeamNG.drive 0.39.4 runs of the previous day within 0.005 g. DynamicABS build: banded loose-surface regime (`ENABLE_DEEP = true, LEVEL_GATE = true`), code key `ba2f3327`.

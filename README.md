@@ -11,7 +11,8 @@ Unlike standard static ABS controllers, this system:
 
 ## Results: 10-run straight-line and 3-run cornering campaign (2026-09-05)
 
-Full tables, charts and the raw CSVs are in [results/RESULTS.md](results/RESULTS.md). Same etk800, same wheels,
+Full tables, charts and the raw CSVs are in [results/RESULTS.md](results/RESULTS.md); spreadsheet layout in
+[results/RESULTS_SHEET.md](results/RESULTS_SHEET.md) and [results/results.xlsx](results/results.xlsx). Same etk800, same wheels,
 tyres and brakes, only the ABS part differs. Every stop is measured by the BrakeTest mod's 2 kHz state machine.
 
 **Straight line, smallgrid, 10 runs per cell (mean g, mean distance):**
