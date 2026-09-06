@@ -9,6 +9,36 @@ Unlike standard static ABS controllers, this system:
 - **Per-Wheel Optimization:** Each wheel runs its own independent PID control loop and grip estimator, meaning you can brake safely even with two wheels on tarmac and two wheels on wet grass.
 - **Dynamic Vehicle Geometry:** Uses yaw rates and vehicle width/length to calculate the exact speed of *each individual wheel hub* during turns, rather than relying on a single center-of-mass speed.
 
+## Results: 10-run straight-line and 3-run cornering campaign (2026-09-05)
+
+Full tables, charts and the raw CSVs are in [results/RESULTS.md](results/RESULTS.md). Same etk800, same wheels,
+tyres and brakes, only the ABS part differs. Every stop is measured by the BrakeTest mod's 2 kHz state machine.
+
+**Straight line, smallgrid, 10 runs per cell (mean g, mean distance):**
+
+| Speed | DynamicABS | Stock ABS | Δ g |
+|---|---|---|---|
+| 60 mph | 1.196 g, 30.6 m | 1.170 g, 31.3 m | +0.025 |
+| 80 mph | 1.207 g, 54.0 m | 1.192 g, 54.7 m | +0.016 |
+| 120 mph | 1.204 g, 121.7 m | 1.200 g, 122.2 m | +0.005 |
+| 160 mph | 1.212 g, 215.1 m | 1.203 g, 216.8 m | +0.009 |
+
+**Braking while cornering at 60 mph**, brake 0.75 to 1.00 in 0.05 steps, steer 0.05 to 1.00, single corner and
+left-then-right double corner, 3 runs per cell, 288 paired stops:
+
+| Metric (paired means) | DynamicABS | Stock ABS | DynamicABS better in |
+|---|---|---|---|
+| Stopping distance (chord) | 40.5 m | 41.8 m | 197 / 288 |
+| Path length | 42.7 m | 43.7 m | 191 / 288 |
+| Time to stop | 2.92 s | 2.97 s | 192 / 288 |
+
+DynamicABS wins every paired stop from 0.10 to 0.25 steer (shorter path and shorter time, so it is braking harder,
+not just turning more). At 0.50 and 0.75 steer the stock ABS stops about 1 to 3 m shorter and DynamicABS carries
+15 to 19° more yaw. Adding traction and stability control to the stock car changed nothing measurable.
+
+![straight](results/straight.png)
+![corner single](results/corner_single.png)
+
 ## Results: DynamicABS vs stock ABS (2026-09-04)
 
 25 recorded stops on gridmap_v2 with the etk800: asphalt at 30 to 120 mph, ice, grass, sand, 15° and 35° inclines,
