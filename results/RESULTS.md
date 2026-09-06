@@ -203,7 +203,7 @@ Stops shorter than stock by more than 5 cm: 197 of 288, longer: 89. DynamicABS i
 
 <img src="charts/corner_single.png" alt="corner single results">
 
-<img src="charts/corner_single_rotation.png" alt="corner single rotation">
+<img src="charts/corner_single_steer_error.png" alt="corner single steer error">
 
 ### Double corner: left turn, then after 1 s the opposite direction at a second (random, logged) amount
 
@@ -368,4 +368,4 @@ Second-corner amounts by cell (rep 1 / 2 / 3), identical for every car:
 
 <img src="charts/corner_double.png" alt="corner double results">
 
-<img src="charts/corner_double_rotation.png" alt="corner double rotation">
+<img src="charts/corner_double_steer_error.png" alt="corner double steer error">

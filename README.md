@@ -54,6 +54,10 @@ The second chart shows how far the car actually rotated during each stop against
 
 <img src="results/charts/corner_single_rotation.png" alt="single corner rotation">
 
+The third chart is the steer error: the front wheel angle minus the angle that would have produced the yaw rate the car actually achieved, from the same recorded runs. Above zero the car turned less than the wheels asked (understeer), below zero it turned more (oversteer), closer to zero is better. All three cars understeer in every cell at 60 mph and the curves sit almost on top of each other, Dynamic ABS about 1 degree lower from 0.50 steer up. No cell averages to oversteer. A per-step yaw-rate tracking measurement is being collected to replace this stopgap.
+
+<img src="results/charts/corner_single_steer_error.png" alt="single corner steer error">
+
 ### Surfaces and terrain, one run per stop (2026-09-04)
 
 25 recorded stops on gridmap_v2: asphalt at 30 to 120 mph, ice, grass, sand, 15 and 35 degree inclines, a small jump, a bump and two rough road sections, same start point and stop line for both controllers. Bump and jump stops vary about 0.05 g from run to run, flat stops repeat within 0.005 g.
