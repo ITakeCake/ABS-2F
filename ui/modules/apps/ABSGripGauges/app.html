@@ -12,7 +12,7 @@
     }
     .absGripGrid {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
       grid-template-rows: 1fr 1fr;
       width: 100%;
       height: 100%;
@@ -83,12 +83,16 @@
       <div class="speedRow muted">Plaus&nbsp;<span class="v">{{ speedData.plausibleSpeed }}</span></div>        
     </div>
     <div class="absGripCell speedCell">
-      <div class="speedRow muted">Fast&nbsp;<span class="v">{{ speedData.probeFastCount }}</span></div>
-      <div class="speedRow muted">Drift&nbsp;<span class="v">{{ speedData.probeDriftCount }}</span></div>
+      <div class="speedRow muted">MaxWs</div>
+      <div class="speedRow muted"><span class="v">{{ speedData.maxWs }}</span></div>
     </div>
     <div class="absGripCell speedCell">
       <div class="speedRow muted">IMU&nbsp;<span class="v">{{ speedData.imuSpeed }}</span></div>
       <div class="speedRow muted">Clamp&nbsp;<span class="v">{{ speedData.imuClampCount }}</span></div>
+    </div>
+    <div class="absGripCell speedCell blankCell">
+      <div class="speedRow muted">StepDown</div>
+      <div class="speedRow muted"><span class="v">{{ speedData.slipStepdownCount }}</span></div>
     </div>
     <!-- Row 2: RL | RR | Air/VirtAir | Snaps | blank -->
     <div class="absGripCell">
@@ -106,12 +110,16 @@
       <div class="speedRow muted">VirtAir&nbsp;<span class="v">{{ speedData.virtualAirspeed }}</span></div>     
     </div>
     <div class="absGripCell speedCell blankCell">
-      <div class="speedRow muted">SnapUp&nbsp;<span class="v">{{ speedData.snapUpCount }}</span></div>
-      <div class="speedRow muted">SnapRej&nbsp;<span class="v">{{ speedData.snapUpRejCount }}</span></div>
+      <div class="speedRow muted">ReAnc&nbsp;<span class="v">{{ speedData.reanchorCount }}</span>&nbsp;<span class="v">{{ speedData.reanchorDelta }}</span></div>
+      <div class="speedRow muted">Onset&nbsp;<span class="v">{{ speedData.onsetSnaps }}</span></div>
     </div>
     <div class="absGripCell speedCell blankCell">
       <div class="speedRow muted">LockupGd&nbsp;<span class="v">{{ speedData.lockupGuardCount }}</span></div>
-      <div class="speedRow muted">N/A</div>
+      <div class="speedRow muted">NextD&nbsp;<span class="v">{{ speedData.nextDEstimate }}</span></div>
+    </div>
+    <div class="absGripCell speedCell blankCell">
+      <div class="speedRow muted">Flight&nbsp;<span class="v" ng-class="{'fused-active': speedData.flightOpen}">{{ speedData.flightEvents }}</span>/<span class="v">{{ speedData.flightDumps }}</span></div>
+      <div class="speedRow muted">Sup&nbsp;<span class="v" ng-class="{'fused-active': speedData.flightOpen}">{{ speedData.support }}</span></div>
     </div>
   </div>
 </div>

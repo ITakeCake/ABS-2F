@@ -1,8 +1,8 @@
 {
   "name": "ABS Grip Gauges",
-  "description": "Per-wheel Surface μ / Tire μ + Fused/Plaus/Air/VirtAir speeds (2F-ex).",
+  "description": "Per-wheel Surface μ / Tire μ + Fused/Plaus/Air/VirtAir speeds + ReAnc/Onset counters + Flight gate events/dumps + body support.",
   "author": "Blake",
-  "version": "1.3",
+  "version": "1.4",
   "domElement": "<abs-grip-gauges></abs-grip-gauges>",
   "directive": "absGripGauges",
   "category": "Telemetry",

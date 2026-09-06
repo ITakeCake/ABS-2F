@@ -1,9 +1,9 @@
-﻿{
+{
     "name": "Dynamic ABS",
     "authors": "Blake",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "tagid": "dynamic_abs",
     "tags": ["brake", "abs", "controller", "vehicle"],
-    "description": "An advanced per-wheel PID anti-lock braking controller. Slots into vanilla vehicles automatically.",
+    "description": "Adaptive per-wheel PID anti-lock braking with IMU-fused ground speed and a per-wheel grip estimator. Slots into vanilla vehicles as an ABS part.",
     "requires_engine_version": "0.36"
 }

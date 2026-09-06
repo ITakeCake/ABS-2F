@@ -11,9 +11,19 @@ angular.module('beamng.apps')
         RL: { surfaceMu: '--', slipMu: '--' },
         RR: { surfaceMu: '--', slipMu: '--' }
       };
+
+      setTimeout(function() {
+        if (window.bngApi && window.bngApi.activeObjectLua) {
+          window.bngApi.activeObjectLua('extensions.load("absTelemetryLogger")');
+        }
+      }, 500);
+
       $scope.speedData = {
         airspeed: '--',
         fusedSpeed: '--',
+        maxWs: '--',
+        seekTarget: '--',
+        seekScore: '--',
         plausibleSpeed: '--',
         virtualAirspeed: '--',
         fCircVal: '1.00',
@@ -31,7 +41,17 @@ angular.module('beamng.apps')
         probeDriftCount: 0,
         ndwCount: 0,
         fusedActive: false,
-        lockupGuardCount: 0
+        lockupGuardCount: 0,
+        nextDEstimate: '--',
+        slipStepdownCount: 0,
+        surfaceChangeCount: 0,
+        reanchorCount: 0,
+        reanchorDelta: '--',
+        onsetSnaps: 0,
+        flightEvents: 0,
+        flightDumps: 0,
+        flightOpen: false,
+        support: '--'
       };
 
       $scope.$on('updateABSGrip', function(event, data) {

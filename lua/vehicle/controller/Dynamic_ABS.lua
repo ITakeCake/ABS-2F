@@ -1,6 +1,6 @@
 local M = {}
 M.type = "auxiliary"
-M.version = "1.01"
+M.version = "1.00"
 
 -- PID ABS, no-cheat. Uses fusedSpeed only (no virtualAirspeed).
 -- detectMu runs at 2kHz (sensor fusion -> fusedSpeed)
@@ -12,7 +12,7 @@ M.version = "1.01"
 -- obj:getMass(), and jbeamData. Falls back to safe universal defaults
 -- when any lookup fails. No dynamic (per-tick) cheating anywhere.
 
-local TICK_RATE_HZ = 100
+local TICK_RATE_HZ = 200
 local TICK_STEP = 1 / TICK_RATE_HZ
 local timeAccum = 0
 
@@ -23,7 +23,7 @@ local origBrakeTorque = {}
 -- Built dynamically in buildWheelMaps() via wheels.wheelRotatorIDs.
 local wheelToBrakeMap = {1, 2, 3, 4}
 
--- Which logical indices are rear / front wheels (used by probe rearNow calc)
+-- Which logical indices are rear / front wheels
 local rearLogicalIndices  = {1, 2}   -- default RR=1, RL=2
 local frontLogicalIndices = {3, 4}   -- default FR=3, FL=4
 
@@ -37,21 +37,125 @@ local fusedPrevWs = {}
 local fusedInitialized = false
 local latestWheelSpeed = {}
 local latestSensorY = 0
-local latestRawSY = 0       -- raw accel (friction-only, no pitch correction)
+local wasBrakingMu = false
 
 -- Snap-up gap gate (TEST): reject a fused up-snap whose one-tick gap to the fastest wheel
--- exceeds this. 0.75 m/s @ 2kHz implies a "speed-up" of ~1500 m/s² — impossible for a braking
+-- exceeds this. 0.75 m/s @ 2kHz implies a "speed-up" of ~1500 m/sÂ² â€” impossible for a braking
 -- car, so it can only be a corrupted/spiking wheel reading. Real re-grips are <= ~0.33 m/s/tick,
 -- so this never blocks a legitimate re-anchor. Equivalent to the (maxWs-fused)/dt accel bound.
 local SNAP_GAP_MAX = 0.75
+-- Snap-up low-speed cutout: don't re-anchor fused up to a wheel when BOTH fused and the wheel
+-- average are essentially stopped (< 2.5 mph). Near standstill, locked/creeping wheels and sensor
+-- noise can throw a spuriously-faster wheel reading; suppressing the up-snap there keeps fused from
+-- twitching back up as the car settles to a stop.
+local SNAP_MIN_SPEED = 1.1176   -- m/s = 2.5 mph
 
 -- IMU speed ceiling (anti-wheelspin). imuSpeed integrates the accelerometer alone, so it is
 -- immune to wheelspin; fused is capped at EXACTLY imuSpeed so pre-brake wheelspin (e.g. floor
 -- it on water, then brake) can never inflate fused above what the car's own acceleration
--- actually supports. imuSpeed resyncs to the wheels only while they're trustworthy — a wheel
+-- actually supports. imuSpeed resyncs to the wheels only while they're trustworthy â€” a wheel
 -- within IMU_TRUST_WINDOW above imuSpeed is "gripping" (resync); further above = "spinning".
 local imuSpeed = 0
 local IMU_TRUST_WINDOW = 2.0   -- m/s: how far a wheel may lead imuSpeed and still be trusted
+-- Slip-anchored fused stepdown: during braking the wheels lag true speed by ~the commanded slip.
+-- If fused sits further above the fastest wheel than that slip explains, sustained, fused has
+-- drifted -> snap fused + IMU down to the wheel-implied true speed. A discrete reset (like the
+-- off-brake resync), NOT a continuous override. All tunables live here (expect frequent tweaking).
+local ENABLE_SLIP_STEPDOWN   = true
+local SLIP_STEPDOWN_RATIO    = 1.01   -- fire when measured gap > this * expected(slip-explained) gap
+local SLIP_STEPDOWN_SUSTAIN  = 0.02   -- s: gap must stay over threshold this long before firing
+local SLIP_STEPDOWN_COOLDOWN = 0.30   -- s: no re-fire during this window after a correction
+local SLIP_STEPDOWN_VMIN     = 2.2352 -- m/s: only active above this speed (= 5 mph)
+local SLIP_STEPDOWN_GAPFLOOR = 0.5    -- m/s: ignore gaps smaller than this (noise / tiny s_t)
+local SLIP_STEPDOWN_STFLOOR  = 0.03   -- min commanded slip target used in the expected-gap calc
+local SLIP_STEPDOWN_SNAPFRAC = 0.5    -- where in the [fastest wheel, slip-implied speed] window to
+                                      -- land fused on a fire. 0 = snap to the wheel (max down),
+                                      -- 1 = full slip-implied speed (old behavior), 0.5 = middle.
+local slipStepdownTimer    = 0
+local slipStepdownCooldown = 0
+local slipStepdownCount    = 0
+-- IMU ceiling slew: fused is pulled DOWN toward imuSpeed at no more than this rate (m/s^2),
+-- instead of snapping instantly. Below a car's real max decel (~11 m/s^2), so a brief imuSpeed
+-- undershoot can't collapse fused to 0, while a genuine over-read still corrects in a few tenths.
+local IMU_CLAMP_RATE = 8.0     -- m/s^2
+
+-- Gradient re-anchor: a sustained one-sign pitch rate (crest/dip/bump) corrupts the body-axis
+-- integral. Once the pitch event settles and the tires carry load again, snap fused ONCE to the
+-- slip-corrected fastest wheel (bounded), both directions. +sensorZ = downward accel.
+local ra = {
+  ENABLE      = true,
+  TAU         = 0.02,    -- s: EMA on pitch rate (finite-differenced, noisy)
+  RATE_ON     = 0.15,    -- rad/s: gradient is changing
+  ON_MIN_S    = 0.04,    -- s: one-sign persistence before it counts as an event
+  RATE_OFF    = 0.05,    -- rad/s: settled
+  SETTLE_S    = 0.05,    -- s: settled + loaded this long => fire
+  SUPPORT_MIN = 6.9,     -- m/s^2: ~0.7 g tire support required to trust wheels
+  MAX_FRAC    = 0.25,    -- cap |correction| at this fraction of fused
+  COOLDOWN_S  = 0.20,
+  VMIN        = 2.2352,  -- m/s (5 mph)
+  SLIP_FRAC   = 0.15,    -- fastest wheel logged at ~2-3% slip under a 0.25 target
+  ONSET_ENABLE = true,   -- brake onset: wheels carry no brake torque yet => downward-only snap to fastest wheel
+  ONSET_SLIP  = 0.02,
+  onsetFires  = 0,
+  maxWs = 0, avgWs = 0,
+  rate = 0, az = 0, support = 9.81, sign = 0, onTime = 0, armed = false,
+  settleTime = 0, cooldown = 0, fires = 0, lastDelta = 0,
+}
+
+-- Airborne axle: pre-arm, don't pre-load. Both wheels of an axle holding speed (or spinning down
+-- torque-only) while body support < 0.7 g => axle in the air. Output FLOOR, freeze PID state; on
+-- touchdown re-arm the integral so duty resumes at REARM_DUTY instead of ramping from zero.
+local air = {
+  ENABLE       = false,
+  FLOOR        = 0.0,     -- absCoef while airborne (0 = free wheel lands at road speed)
+  SUPPORT_MIN  = 6.9,     -- m/s^2: below this the body is not on its tires
+  HOLD_ACC     = 3.0,     -- m/s^2: |wheel accel| under this = holding speed
+  BODY_DECEL   = 3.0,     -- m/s^2: car must be decelerating for "holding" to mean airborne
+  SPINDOWN_ACC = 40.0,    -- m/s^2: rim spinning down faster than any loaded wheel
+  SPINUP_ACC   = 30.0,    -- m/s^2: touchdown spin-up ends the event
+  ENTRY_S      = 0.05,    -- s: both wheels must qualify this long (bump chatter is shorter)
+  FLOOR_EARLY  = 0.025,   -- absCoef for the first FLOOR_EARLY_S of a flight (short hops: pads stay engaged)
+  FLOOR_EARLY_S = 0.10,
+  EXIT_S       = 0.01,    -- s: supported this long = landed
+  TIMEOUT_S    = 0.5,
+  REARM_DUTY   = 0.5,     -- integral seeded so duty >= this at touchdown
+  wAcc = {0, 0, 0, 0}, tick = {0, 0, 0, 0},
+  front = false, rear = false, frontT = 0, rearT = 0, supportedT = 0,
+  events = 0, frontEvents = 0, rearEvents = 0,
+}
+
+-- Flight gate: brakes on, body support outside the flat band, and both wheels of an axle spinning
+-- down faster than a loaded wheel can (per-wheel line = SAFETY * k_i * applied torque, k_i from jbeam
+-- radius/inertia). A: hold the D-estimator through flight AND landing. B: once support has come
+-- back into band from the landing spike, snap fused to the fastest wheel * (1 + B_PCT).
+local fg = {
+  ENABLE_FG  = true,
+  A_ENABLE   = false,
+  A_MODE     = "flight",  -- "hold": freeze D while gate open; "flight": no freeze, restore pre-event D once at landing of a real flight
+  B_ENABLE   = true,
+  B_PCT      = 0.03,
+  B_MODE     = "above",   -- "above": need a landing spike first; "any": first return to band
+  TRIGGER    = "support", -- "wheel": support band + free-wheel spin-down; "support": support band alone
+  FLIGHT_SUP = 5.0,       -- m/s^2: support below this = real flight (B requires it when TRIGGER=support)
+  REL_DUTY   = 0.05,      -- "release" trigger: duty under this ...
+  REL_S      = 0.04,      -- ... for this long, wheel not spinning back up ...
+  REL_SPINUP = 5.0,       -- m/s^2: accel above this = tire has re-gripped
+  REL_SLIP   = 0.10,      -- ... still this far below fused ...
+  REL_MEM_S  = 0.10,      -- ... and support left the band within this window
+  relT = {0, 0, 0, 0}, wasRel = {false, false, false, false}, outBandAgo = 9,
+  sawLow     = false,
+  B_SETTLE   = 0.03,      -- s in band before the dump
+  BAND_LO    = 6.8,  BAND_HI = 12.8,   -- m/s^2 support, flat measured 8.7-10.3
+  FLOOR      = 250,       -- m/s^2: highest loaded-wheel spin-down seen on any surface
+  SAFETY     = 0.7,
+  TIRE_CORR  = 0.55,      -- measured free decel / (r/I) on etk800 fronts (tire inertia not in wd.inertia)
+  DWELL      = 0.01,      -- s both wheels must qualify
+  HOLD_S     = 0.10,      -- s in band before unlocking D
+  TIMEOUT_S  = 1.0,
+  k = {0, 0, 0, 0}, wAcc = {0, 0, 0, 0}, tick = {0, 0, 0, 0},
+  open = false, openT = 0, inBandT = 0, sawHigh = false, dumped = false, lockD = 1.0, dumpTo = nil,
+  events = 0, frontEvents = 0, rearEvents = 0, dumps = 0,
+}
 
 -- 2D planar speed (drift handling). A sliding/yawing car corrupts a single-axis forward-speed
 -- integral via the yaw-Coriolis term (lateral velocity * yaw rate). Tracking lateral velocity
@@ -61,15 +165,43 @@ local IMU_TRUST_WINDOW = 2.0   -- m/s: how far a wheel may lead imuSpeed and sti
 local ENABLE_2D_SPEED = true
                                 -- survive a multi-second open-loop slide). Wheels are the only
                                 -- reliable speed source; keep IMU as a short re-anchored ceiling.
-local fwdVel = 0               -- estimated forward velocity, body frame (m/s) — internal 2D state
+local fwdVel = 0               -- estimated forward velocity, body frame (m/s) â€” internal 2D state
 local vLat = 0                 -- estimated lateral (sideslip) velocity, body frame (m/s)
+
+local vVert = 0
+
+-- IMU input filtering (change #2). Filters the finite-differenced pitch/roll rates (the dominant
+-- vVert noise source: differentiation amplifies noise and it's multiplied by fwdVel below) and the
+-- vertical accel (vVert enters imuSpeed SQUARED, so its noise always biases the ceiling UPWARD).
+-- ax (forward) and ay (lateral) are deliberately NOT EMA-filtered: lag there would delay
+-- brake-onset / slide-onset detection. All EMAs are dt-scaled => rate-independent behavior.
+local ENABLE_IMU_FILTERS = false  -- V1.03 test: filters off to isolate regression vs V1.01
+local TAU_ROT = 0.02         -- s: EMA time constant for pitch/roll rates
+local TAU_AZ  = 0.05         -- s: EMA time constant for vertical accel
+local ACCEL_DEADBAND = 0.05  -- m/s^2: kills stationary sensor creep on ay/az
+local filtPitchRate = 0
+local filtRollRate  = 0
+local filtAz        = 0
+local lastPitch = 0
+local lastRoll = 0
+local pitchRateLog = 0
+local rollRateLog = 0
+local pitchLog = 0
+local rollLog = 0
+local ENABLE_IMU_LOG = false  -- writes abs_imu_log_*.csv per stop (development only)
+local isLogging = false
+local logData = {}
+local logTimer = 0
 -- imuSpeed reports GROUND SPEED = sqrt(fwdVel^2 + vLat^2); pure yaw rotates speed between the two
 -- axes and conserves the magnitude, so a sideways slide keeps the estimate at true speed (not 0).
 
 -- Reverse support: bypass PID in reverse, handle arcade-mode input routing correctly.
 local motionDirection = 1   -- +1 forward, -1 reverse (hysteresis)
-local REVERSE_DETECT_THRESHOLD = 1.0   -- m/s — min wheel speed to trust direction signal
-local REVERSE_LOCKIN_MPS       = 0.5   -- m/s — signed avg must exceed this to flip
+local REVERSE_DETECT_THRESHOLD = 1.0   -- m/s â€” min wheel speed to trust direction signal
+local REVERSE_LOCKIN_MPS       = 0.5   -- m/s â€” signed avg must exceed this to flip
+
+-- Wheel decel lockup guard: if wheel decels faster than this, override PID and cut brake
+local WHEEL_DECEL_LIMIT = -100  -- m/sÂ²
 
 -- Brake-event recorder: FIFO of last 4 events with peak fused-vs-airspeed divergence.
 -- Published to UI via guihooks.trigger('updateABSBrakeEvents', {events, live}).
@@ -82,7 +214,7 @@ local BRAKE_EVENT_MIN_PEAK_AIR = 2.2352   -- m/s (= 5 mph): don't update peak di
 local BRAKE_EVENT_MIN_DUR = 0.3           -- s
 local BRAKE_EVENT_PRESS_THRESHOLD = 0.05
 local BRAKE_EVENT_MAX = 6                 -- FIFO size
-local BRAKE_EVENT_FILE = "settings/blake_abs_brake_events.json"
+local BRAKE_EVENT_FILE = "settings/dynamic_abs_brake_events.json"
 
 -- wheelAvg speed estimator. Per-wheel lock flag with decel-buffer unlock:
 --   LOCK   : wDecel < LOCK_DECEL
@@ -98,7 +230,7 @@ local wa = {
   decelBuf = {},
   decelIdx = {},
   LOCK_WINDOW = 8,       -- 40ms at 200Hz
-  LOCK_DECEL = -5,       -- hard-lockup threshold (m/s²)
+  LOCK_DECEL = -5,       -- hard-lockup threshold (m/sÂ²)
 }
 
 -- UI state: which speed source PID is using this tick
@@ -106,45 +238,32 @@ local absSpeedSource = { wheelAvgActive = false, fusedActive = true }
 
 -- Safety + counters: bundled to stay under LuaJIT's 60-upvalue limit
 local safety = {
-  snapUp = 0, snapDn = 0, snapUpRej = 0,   -- snapUpRej = up-snaps rejected by the gap gate
-  imuClamps = 0,                           -- times the IMU ceiling capped fused (anti-wheelspin)
-  phantomVetoes = 0,                       -- times the decel cross-check vetoed a phantom-slip release
-  stuckResyncs = 0,                        -- times the decel-sanity check re-anchored a stuck fused
-  probes = 0, probesF = 0,    -- probesF = "Fast" probe (combined) fire count
-  probesDrift = 0,            -- "Drift" probe (extended) fire count
+  snapUp = 0, snapUpRej = 0,   -- snapUpRej = up-snaps rejected by the gap gate
+  imuClamps = 0,               -- times the IMU ceiling capped fused (anti-wheelspin)
   slipRatios = {},
   lastAbsCoefs = {},
-  -- Safety toggle: BOTH probes (combined + extended). Back ON as the fused-too-high fallback while
-  -- we work out a better fix. (Known tradeoff: they can false-fire on ice — see history.)
-  ENABLE_PROBE = true,
-  absEventID = 0,
-  probeLogBuffer = {},
-  -- Wheel decel lockup guard: if wheel decels faster than this, override PID and cut brake
-  WHEEL_DECEL_LIMIT = -80,  -- m/s²
-  -- Stuck-fused recovery (decel sanity). Re-anchor imuSpeed to the wheels DURING braking when the
-  -- IMU proves the car isn't really moving that fast.
-  stuck = { MARGIN=2.0, DECEL=0.5, SUSTAIN=0.15, timer=0 },
-  engineFightTimer = {0, 0, 0, 0},
   -- Low-speed brake boost: naturally deepens slip below 30mph to aid final stopping without PID windup
-  lowSpeed = { BOOST_MAX = 1.25, SPEED_THRESH = 13.41 },
+  lowSpeed = { BOOST_MAX = 1.25, SPEED_THRESH = 13.41 },  -- 1.25 = golden V1.00 low-speed boost (restored)
 }
+
+local lastLowSpeedBoost = 1.0
 
 -- Per-wheel surface-grip detector (ANCHORED brake-acceptance).
 -- The global consensusD (IMU peak-decel) sets the absolute LEVEL; per-wheel
 -- brake-acceptance carves the SPLIT. grip proxy g_i = appliedTorque_i / Fz_i (~ mu_i),
 -- where appliedTorque_i = absCoef_i * origBrakeTorque_i (PID output + known constant) and
 -- Fz_i = static corner load + longitudinal transfer from the global decel we already have.
--- Honest signals only — no per-wheel downForce. Bundled in one table to stay under
+-- Honest signals only â€” no per-wheel downForce. Bundled in one table to stay under
 -- LuaJIT's 60-upvalue limit. wheel order 1=RR,2=RL,3=FR,4=FL.
 --
--- (2): FRONT_FRAC, H_CG, WHEELBASE, and yawOffset are now built in init()
+-- (2): FRONT_FRAC, H_CG, and WHEELBASE are now built in init()
 -- from real vehicle geometry (wheel axle node positions + obj:getMass()).
--- None of these values are updated at runtime — static config only.
+-- None of these values are updated at runtime â€” static config only.
 local grip = {
   ENABLE_PERWHEEL_D = false,  -- master switch; false => original global broadcast (escape hatch)
-  FRONT_FRAC = 0.5,           -- static front weight fraction — computed in init(), fallback 0.5
-  H_CG = 0.55,                -- CG height (m) — read from jbeamData or universal fallback
-  WHEELBASE = 2.6,            -- wheelbase (m) — computed from axle node positions in init()
+  FRONT_FRAC = 0.5,           -- static front weight fraction â€” computed in init(), fallback 0.5
+  H_CG = 0.55,                -- CG height (m) â€” read from jbeamData or universal fallback
+  WHEELBASE = 2.6,            -- wheelbase (m) â€” computed from axle node positions in init()
   GRAV = 9.81,
   FZ_MIN = 200, SAT = 0.97, ROLL_MIN = 1.0, TORQUE_MIN_FRAC = 0.05,
   G_SMOOTH = 0.9, DECAY = 0.05, EPS = 1e-3,
@@ -153,10 +272,6 @@ local grip = {
   gEMA = {},
   Dwheel = {},
   confident = {},
-  -- Turn handling: yaw-compensated per-wheel reference speed.
-  -- v_ref_i = fusedSpeed - yawRate * yawOffset_i. Outside wheels get a higher reference so
-  -- their geometrically-faster rotation isn't mistaken for slip. Soft deadband ignores noise.
-    yawOffset = {},              -- ±half-track (m): computed in init() from axle node X positions
   yawRate = 0,                 -- last read yaw rate (rad/s), published for sign-check
 }
 
@@ -164,29 +279,31 @@ local grip = {
 local slipIntegral = {}
 local lastSlipError = {}
 local prevTickWheelSpeed = {}
+local lastEffectiveTargets = {0, 0, 0, 0}
+local lastSlipErrors = {0, 0, 0, 0}
+local lastSlipDerivatives = {0, 0, 0, 0}
 
 
-
--- Rear-only brake-rotation assist (ESC-lite, EXPERIMENTAL). Under braking + steering, run the
--- INSIDE-rear wheel a touch deeper in slip to rotate the car into the corner. Yaw-rate limited:
--- the boost fades to 0 as actual yaw approaches what the steering commands, so it can't over-rotate.
--- Target-side (the slip PID cancels a raw brake boost). A wrong steering sign brakes the OUTSIDE
--- rear -> stabilizes (fail-safe, just no turn-in help), so a sign error can't spin you.
--- Bundled in one table to stay under LuaJIT's 60-upvalue-per-function limit.
-local rot = {
-  ENABLE = false,
-  ASSIST_MAX = 0.05,      -- max added slip on the inside rear (0.14 -> 0.19 at full) ~ "5%"
-  DEADBAND = 0.30,        -- steering below this = OFF (excludes 90mph lane changes; on for hairpins)
-  MIN_SPEED = 5.0,        -- m/s: no assist below this
-  YAW_CMD_GAIN = 0.18,    -- maps steering*speed -> commanded yaw rate (bicycle-model approx)
-  YAW_LIMIT_BAND = 0.15,  -- rad/s: fade window; assist -> 0 as actual yaw reaches commanded
-}
 
 -- Per-wheel adaptive slip targets (D-estimator writes, PID reads)
 local slipTargets = {}
 local SLIP_TARGET_MIN = 0.02
 local SLIP_TARGET_MAX = 1.0
 local TARGET_SMOOTHING = 0.95
+
+-- [FLAT TARGET EXPERIMENT 2026-08-26] Bypass the D->target formula (and hunter trim)
+-- with a flat base target on all four wheels. Deepener still applies on top at the use site.
+-- Set USE_FIXED_SLIP_TARGET = false to restore the stock V1.15 D-law behavior.
+local USE_FIXED_SLIP_TARGET = false
+local FIXED_SLIP_TARGET = 0.145
+
+-- Low-speed slip deepening: the (1+D)/carSpeed term added to effectiveTarget, which raises the
+-- allowable slip as speed falls so ABS ramps out toward a firm stop near standstill. When OFF,
+-- effectiveTarget == slipTargets, so the stepdown safety uses the base slipTargets with zero
+-- first-order fused-dependence (1:1 with what the PID commands). If you turn this back ON, real
+-- slip deepens at low speed and the base target under-predicts it -> switch the safety's s_t back
+-- to lastEffectiveTargets (see the slip-stepdown block) or it will false-fire at low speed.
+local ENABLE_LOWSPEED_SLIP_DEEPEN = true
 
 -- D estimator (peak-decel window). D = peakDecel / g.
 -- (D-estimator state: bundled to stay under LuaJIT 60-upvalue limit)
@@ -205,48 +322,84 @@ local dest = {
   stableTicks      = 0,
   SETTLE_TICKS     = 30,       -- 0.15s before surface-change detection arms
   CHANGE_THRESHOLD = 0.40,    -- >40% D jump = surface change, blow away the window
+  -- snap+undo: upward snap is provisional, reverted if raw decel returns to pre-snap band
+  SNAP_UNDO_ENABLE  = true,
+  SNAP_UNDO_TICKS   = 20,     -- 100ms: wheel-hop transients are 30-100ms on road cars
+  SNAP_UNDO_BAND    = 0.30,   -- +/-30% of the pre-snap level counts as "returned"
+  SNAP_UNDO_CONFIRM = 3,      -- consecutive in-band ticks before reverting
+  shadowWindow      = {},
+  shadowIdx         = 0,
+  shadowD           = 1.0,
+  shadowStableD     = 1.0,
+  shadowStableTicks = 0,
+  shadowLevel       = 0,      -- pre-snap decel level (m/s^2)
+  undoTicks         = 0,      -- >0 while a snap is provisional
+  undoInBand        = 0,
+  snapUndos         = 0,
+  snapTotal         = 0,      -- snaps since vehicle reset (retroResets zeroes per ABS event)
+  
+  absEventActive   = false,
+  absEventSum      = 0,
+  absEventTicks    = 0,
+  absEventTotalTicks = 0,
 }
+
+-- D-estimator window aggregation: how the sliding decel window collapses to one number.
+-- Flip D_AGG_MODE to compare estimators on the same drive (peak is the historical behavior).
+--   "peak" : max sample in the window  (over-reads on ice: latches transients)
+--   "mean" : average of the window     (steadiest, but slow to catch a real grip peak)
+--   "topn" : average of the D_AGG_TOPN largest samples (compromise; peak-ish but denoised)
+-- Switchable live via M.setDAggMode(mode[, topn]) -- no reload needed.
+local D_AGG_MODE = "peak"
+local D_AGG_TOPN = 10
+
+-- Collapse dest.window to a single decel value per D_AGG_MODE. peak/mean allocate nothing;
+-- topn builds+sorts a small array (only that mode), fine for a diagnostic at 200Hz.
+local function aggregateDecelWindow()
+  local w = dest.window
+  if D_AGG_MODE == "mean" then
+    local sum, n = 0, 0
+    for j = 1, dest.WINDOW_SIZE do local v = w[j]; if v then sum = sum + v; n = n + 1 end end
+    return n > 0 and (sum / n) or 0
+  elseif D_AGG_MODE == "topn" then
+    local vals = {}
+    for j = 1, dest.WINDOW_SIZE do local v = w[j]; if v then vals[#vals + 1] = v end end
+    local n = #vals
+    if n == 0 then return 0 end
+    table.sort(vals)                              -- ascending
+    local k = math.min(D_AGG_TOPN, n)
+    local s = 0
+    for i = n, n - k + 1, -1 do s = s + vals[i] end
+    return s / k
+  else                                            -- "peak" (default / historical)
+    local peak = 0
+    for j = 1, dest.WINDOW_SIZE do local v = w[j]; if v and v > peak then peak = v end end
+    return peak
+  end
+end
 
 -- Hybrid Peak-Hunter & Brake Simulator State
+-- ENABLE=false: the front/rear trim extremum-seeker is OFF (fixed D-derived slip targets only).
 local ph = {
-  trimOffset = 0,
-  trimDirection = 1,
-  trimStep = 0.01,
-  trimMax = 1.0,
-  trimMin = 0.0, -- TEST: Prevents the seeker from dropping the ABS target below the baseline
-  trimTimer = 0,
-  TRIM_INTERVAL = 0.05,
-  lastEfficiency = 0,
-  effSum = 0,
-  effCount = 0,
-  simulatedTorque = {},
-  brakeInRate = {},
-  brakeOutRate = {},
-  -- Gas+Brake seeker disable: when throttle AND brake are simultaneously pressed,
-  -- the Peak-Hunter seeker is paused. The instant gas is released it resumes --
-  -- no need to re-press the brake. Toggleable.
+  ENABLE = false,
   ENABLE_THROTTLE_LOCKOUT = true,
   seekerSuppressed = false,
+  
+  turn = 1,       -- 1 = Front, 2 = Rear
+  phase = 0,      -- 0=STEP, 1=SETTLE, 2=MEASURE, 3=EVALUATE
+  
+  frontOffset = 0,
+  rearOffset = 0,
+  frontDirection = 1,
+  rearDirection = 1,
+  
+  lastFrontEfficiency = 0,
+  lastRearEfficiency = 0,
+  
+  settleTicks = 0,
+  measureTicks = 0,
+  startSpeed = 0,
 }
-
--- EBD (Electronic Brakeforce Distribution) safety:
--- Detects when front brakes are failing (front doing <25% of total braking force)
--- and smoothly reduces rear brake authority to prevent spinout.
-local ebd = {
-  ENABLE        = false,
-  TRIGGER_FRAC  = 0.25,   -- front must fall below 25% of total brake force to activate
-  SUSTAIN       = 0.40,   -- seconds of sustained low front share before activating
-  MIN_SPEED     = 8.0,    -- m/s (~18mph): don't activate at standstill
-  SMOOTH        = 0.97,   -- EMA smoothing for frontShareEMA (very heavy, avoids transients)
-  REAR_MIN      = 0.40,   -- rear brakes never reduced below 40% even in worst case
-  frontShareEMA = 1.0,    -- start assuming healthy (front doing 100%)
-  sustainTimer  = 0,
-  active        = false,
-  rearScale     = 1.0,
-}
-
--- Front/rear bias — zeroed, no measurable effect in testing
-local AXLE_BIAS = {}
 
 -- PID tunables
 local KP = 6.0
@@ -254,48 +407,18 @@ local KI = 0.8
 local KD = 0.08
 local INTEGRAL_MIN = -1.0
 local INTEGRAL_MAX = 1.0
-local MIN_SPEED = 2.236
+local MIN_SPEED = 5.0
 local MIN_ADAPT_SPEED = 2.0
 
 -- Misc
 local NON_BRAKING_DECEL_FILTER = -5.0
 local STANDSTILL_WS_THRESHOLD = 0.3
 local STANDSTILL_FUSED_THRESHOLD = 2.0
+local STANDSTILL_ACCEL_MAX = 0.5   -- m/s^2: only count as stopped when NOT decelerating. Locked wheels
+                                   -- read ~0 while the car still moves under braking; the accelerometer
+                                   -- (gravity-cancelled) does not, so it vetoes a premature standstill-zero.
 local STANDSTILL_PHYS_TICKS = 100
 local standstillCounter = 0
-
--- Fused-speed safety probe: single combined config.
--- Fires when all wheels agree (within wheelAgree) AND fused floats > fusedRatio above the
--- wheel avg, sustained, AND the total applied brake (from the PID's absCoef output) is below
--- lowBrakeThreshold — then snaps fused down to the captured rear-wheel speed.
-safety.configs = {
-  combined = {
-    wheelAgree = 1.788,    -- m/s (4 mph) — wheels must agree within this
-    fusedRatio = 1.50,     -- RAISED from 1.30: normal 100mph stops peak at 1.31x; fire only at 1.50x+ (genuine runaway)
-    sustain = 0.04,        -- seconds the divergence must hold before firing
-    duration = 0.04,       -- seconds active, capturing max rear-wheel speed
-    rearmCooldown = 1.0,   -- seconds latched before it can fire again
-    requireLowBrake = true,
-    lowBrakeThreshold = 0.60,  -- only fire when total applied brake (PID absCoef-weighted) <= 60%
-  },
-  -- Secondary "extended" probe: catches fused sitting above the wheel avg for a LONG time.
-  extended = {
-    wheelAgree = 2.682,    -- m/s (6 mph)
-    fusedRatio = 1.28,     -- RAISED from 1.10: normal stops sustain 1.10-1.15x throughout; fire only at 1.28x+
-    sustain = 1.5,         -- seconds — long hold = "extended period"
-    duration = 0.10,       -- seconds active, capturing max rear-wheel speed
-    rearmCooldown = 1.0,   -- seconds latched before it can fire again
-    requireLowBrake = true,
-    lowBrakeThreshold = 0.80,  -- fire when applied brake (PID absCoef-weighted) <= 80%
-  },
-}
-
-local function newProbeState()
-  return { divergeTimer = 0, active = false, timer = 0, maxRear = 0, latched = false, latchCooldown = 0 }
-end
-
-safety.probe = newProbeState()
-safety.probe2 = newProbeState()
 
 local uiAccum = 0
 local function getCondition(slip)
@@ -330,26 +453,22 @@ local function initDecelWindow()
   dest.stableD = 1.0
   dest.stableTicks = 0
   dest.consensusD = 1.0
-end
-
-
-local function resetProbe()
-  safety.probe = newProbeState()
-  safety.probe2 = newProbeState()
-  safety.lastAbsCoefs = {}
-  for i = 1, N_WHEELS do safety.lastAbsCoefs[i] = 1 end
+  dest.undoTicks = 0
+  dest.undoInBand = 0
+  dest.snapUndos = 0
+  dest.snapTotal = 0
 end
 
 
 -- (2) buildWheelMaps: 1:1 copy of the stock BeamNG method from
--- drivingDynamics/sensors/vehicleData.lua → initSecondStage().
+-- drivingDynamics/sensors/vehicleData.lua â†’ initSecondStage().
 -- Step 1: Filter to known corner wheel names {"FR","FL","RR","RL"}.
 -- Step 2: Compute average wheel position from v.data.nodes[wheel.node1].pos.
 -- Step 3: Build a local coordinate frame from the vehicle's reference nodes
 --         (ref, back, up) via forward/up/right vectors.
 -- Step 4: Classify each corner wheel as front/rear + left/right using
 --         dot products against the forward and right vectors.
--- Maps logical index (1=RR, 2=RL, 3=FR, 4=FL) → wheelRotator slot (1-based).
+-- Maps logical index (1=RR, 2=RL, 3=FR, 4=FL) â†’ wheelRotator slot (1-based).
 -- Falls back to identity map {1,2,3,4} if the stock method fails.
 local function buildWheelMaps()
   wheelToBrakeMap = {}
@@ -388,7 +507,7 @@ local function buildWheelMaps()
         local dotForward   = vectorForward:dot(wheelVector)
         local dotRight     = vectorRight:dot(wheelVector)   -- stock calls this "dotLeft" but tests >= 0 for right
 
-        -- Map wheel name → wheelRotator index → 1-based slot for our tables
+        -- Map wheel name â†’ wheelRotator index â†’ 1-based slot for our tables
         local rotIdx = wheels.wheelRotatorIDs[wheel.name]
         if rotIdx == nil then error("wheelRotatorIDs missing for '" .. wheel.name .. "'") end
         local slot = rotIdx + 1  -- wheelRotatorIDs is 0-based; our tables are 1-based
@@ -431,10 +550,10 @@ local function buildWheelMaps()
 end
 
 
--- (2) buildGeometry: computes WHEELBASE, yawOffset, and FRONT_FRAC from wheel axle
+-- (2) buildGeometry: computes WHEELBASE and FRONT_FRAC from wheel axle
 -- node positions. Uses wheels.wheelRotators[i].node1/.node2 (confirmed in official
 -- BeamNG dev code) and obj:getNodePositionRelative() for body-frame positions.
--- All values are computed ONCE at init — zero runtime overhead.
+-- All values are computed ONCE at init â€” zero runtime overhead.
 -- jbeamData is checked first for an explicit cgHeight override; falls back to 0.55.
 local function buildGeometry(jbeamData)
   -- CG height: try jbeamData first (our own ABS jbeam may define it), then universal fallback.
@@ -453,8 +572,6 @@ local function buildGeometry(jbeamData)
   local wheelNames = { "RR", "RL", "FR", "FL" }
   local logicalMap = { RR = 1, RL = 2, FR = 3, FL = 4 }
   local positions = {}   -- [logicalIdx] = {x, y, z} body-frame midpoint
-
-  local canReadPos = (obj.getNodePositionRelative ~= nil) or true  -- optimistic; pcall guards below
 
   for _, name in ipairs(wheelNames) do
     local logical = logicalMap[name]
@@ -500,23 +617,8 @@ local function buildGeometry(jbeamData)
     end
   end
 
-  -- yawOffset per logical wheel: X position of axle center in body frame.
-  -- BeamNG body frame: X positive = left, X negative = right (matches suspension JBeam nodes).
-  -- Sign convention matches existing code: negative = right side, positive = left side.
-  local halfTrackSum, halfTrackCount = 0, 0
-  for li = 1, N_WHEELS do
-    if positions[li] then
-      grip.yawOffset[li] = positions[li].x
-      halfTrackSum = halfTrackSum + math.abs(positions[li].x)
-      halfTrackCount = halfTrackCount + 1
-    else
-      -- Fallback: use a reasonable default half-track; will be overwritten for any wheel we CAN read
-      grip.yawOffset[li] = (li == 1 or li == 3) and -0.75 or 0.75
-    end
-  end
-
   -- FRONT_FRAC: fraction of static weight on front axle.
-  -- Derived from front/rear axle Y positions relative to vehicle origin (body CG ≈ origin).
+  -- Derived from front/rear axle Y positions relative to vehicle origin (body CG â‰ˆ origin).
   -- front_frac = distance_from_CG_to_rear / wheelbase  (static weight fraction at front).
   if frontY and rearY and grip.WHEELBASE > 0.5 then
     -- CG is at Y=0 in body frame (origin); rear is positive Y, front is negative Y.
@@ -531,14 +633,11 @@ local function buildGeometry(jbeamData)
 
   print(string.format("[ABS-1FEX] (2) Geometry: WB=%.2fm FRONT_FRAC=%.2f H_CG=%.2fm",
     grip.WHEELBASE, grip.FRONT_FRAC, grip.H_CG))
-  print(string.format("[ABS-1FEX] (2) yawOffset: RR=%.3f RL=%.3f FR=%.3f FL=%.3f",
-    grip.yawOffset[1] or 0, grip.yawOffset[2] or 0,
-    grip.yawOffset[3] or 0, grip.yawOffset[4] or 0))
 end
 
 
 local function init(jbeamData)
-  print("[ABS-1FEX] (2) canonical build loaded — per-wheel D + 2 probes (combined + extended) ON")
+  print("[ABS-1FEX] (2) canonical build loaded")
 
   -- Read wheel count first; everything else is sized to this.
   N_WHEELS = wheels.wheelRotatorCount or 4
@@ -554,14 +653,12 @@ local function init(jbeamData)
   ph.simulatedTorque    = {}
   ph.brakeInRate        = {}
   ph.brakeOutRate       = {}
-  AXLE_BIAS             = {}
   safety.slipRatios     = {}
   safety.lastAbsCoefs   = {}
   grip.Fz0              = {}
   grip.gEMA             = {}
   grip.Dwheel           = {}
   grip.confident        = {}
-  grip.yawOffset        = {}
   wa.prevWs             = {}
   wa.locked             = {}
   wa.decelBuf           = {}
@@ -570,6 +667,9 @@ local function init(jbeamData)
   for i = 1, N_WHEELS do
     slipIntegral[i]       = 0
     lastSlipError[i]      = 0
+    lastSlipErrors[i]     = 0
+    lastSlipDerivatives[i]= 0
+    lastEffectiveTargets[i]= 0.14
     prevTickWheelSpeed[i] = 0
     latestWheelSpeed[i]   = 0
     fusedPrevWs[i]        = 0
@@ -577,15 +677,12 @@ local function init(jbeamData)
     ph.simulatedTorque[i] = 0
     ph.brakeInRate[i]     = 0
     ph.brakeOutRate[i]    = 0
-    AXLE_BIAS[i]          = 0
     safety.slipRatios[i]  = 0
     safety.lastAbsCoefs[i]= 1
-    safety.engineFightTimer[i] = 0
     grip.Fz0[i]           = 0
     grip.gEMA[i]          = 1
     grip.Dwheel[i]        = 1
     grip.confident[i]     = false
-    grip.yawOffset[i]     = 0
     wa.prevWs[i]          = 0
     wa.locked[i]          = false
     wa.decelBuf[i]        = {}
@@ -594,22 +691,16 @@ local function init(jbeamData)
   end
 
   wasBraking = false
+  wasBrakingMu = false
   timeAccum = 0
   uiAccum = 0
   standstillCounter = 0
-  resetProbe()
   safety.snapUp = 0
-  safety.snapDn = 0
   safety.snapUpRej = 0
   safety.imuClamps = 0
-  safety.phantomVetoes = 0
-  safety.stuckResyncs = 0
-  safety.stuck.timer = 0
-  safety.probes = 0
-  safety.probesF = 0
-  safety.probesDrift = 0
-  safety.absEventID = 0
-  safety.probeLogBuffer = {}
+  slipStepdownTimer = 0
+  slipStepdownCooldown = 0
+  slipStepdownCount = 0
   -- Reset mid-event state; load persisted history from disk (survives vehicle switches).
   currentBrakeEvent = nil
   brakeSimTime = 0
@@ -624,19 +715,19 @@ local function init(jbeamData)
   dest.windowIdx = 0
   dest.stableD = 1.0
   dest.stableTicks = 0
+  dest.absEventActive = false
+  dest.absEventSum = 0
+  dest.absEventTicks = 0
+  dest.absEventTotalTicks = 0
 
-  ph.trimOffset = 0
-  ph.trimDirection = 1
-  ph.trimTimer = 0
-  ph.lastEfficiency = 0
-  ph.effSum = 0
-  ph.effCount = 0
+  ph.frontOffset = 0
+  ph.rearOffset = 0
+  ph.frontDirection = 1
+  ph.rearDirection = 1
+  ph.phase = 0
+  ph.turn = 1
 
   ph.seekerSuppressed = false
-  ebd.frontShareEMA = 1.0
-  ebd.sustainTimer  = 0
-  ebd.active        = false
-  ebd.rearScale     = 1.0
 
   fusedSpeed = 0
   imuSpeed = 0
@@ -656,7 +747,6 @@ local function init(jbeamData)
   logTimer = 0
   fusedInitialized = false
   latestSensorY = 0
-  latestRawSY = 0
 
   -- Read static brake torques and hydraulic delays.
   -- IMPORTANT: index by LOGICAL order (1=RR,2=RL,3=FR,4=FL) via wheelToBrakeMap,
@@ -680,19 +770,21 @@ local function init(jbeamData)
     local slot = wheelToBrakeMap[i]  -- physical wheelRotator slot (1-based)
     local maxT = slot and rawBrakeTorque[slot] or rawBrakeTorque[i]
     origBrakeTorque[i] = maxT
+    local wr = wheels.wheelRotators[(slot or i) - 1]
+    fg.k[i] = fg.TIRE_CORR * ((wr and wr.radius) or 0.33) / math.max((wr and wr.inertia) or 1.0, 0.05)
     local inD = slot and rawInDelay[slot] or rawInDelay[i]
     local outD = slot and rawOutDelay[slot] or rawOutDelay[i]
     ph.brakeInRate[i] = maxT / (inD + 1e-30)
     ph.brakeOutRate[i] = maxT / (outD + 1e-30)
   end
 
-  -- (2) Vehicle mass — static property, read once at init. obj:getMass() is confirmed API.
+  -- (2) Vehicle mass â€” static property, read once at init. obj:getMass() is confirmed API.
   pcall(function() grip.mass = obj:getMass() or grip.mass end)
 
   -- Disable per-wheel D on vehicles with fewer than 4 wheels
   grip.ENABLE_PERWHEEL_D = (N_WHEELS >= 4) and grip.ENABLE_PERWHEEL_D or false
 
-  -- (2) Compute geometry from wheel axle node positions (wheelbase, yawOffset, FRONT_FRAC)
+  -- (2) Compute geometry from wheel axle node positions (wheelbase, FRONT_FRAC)
   -- and read H_CG from jbeamData if provided. All one-time static reads, no runtime cheating.
   buildGeometry(jbeamData)
 
@@ -709,14 +801,81 @@ local function init(jbeamData)
     end
   end
 
-  extensions.load('abstelemetry')
+  -- D-estimator v2 per-wheel constants from the car itself
+  do
+    local d2 = safety.d2
+    for i = 1, N_WHEELS do
+      local slot = wheelToBrakeMap[i] or i
+      local wr = wheels.wheelRotators[slot - 1]
+      local rr = (wr and wr.radius) or 0.33
+      local inertia = math.max((wr and wr.inertia) or 1.0, 0.05)
+      local corr = (wr and wr.isPropulsed) and d2.TIRE_CORR_DRIVEN or d2.TIRE_CORR
+      d2.r[i] = rr
+      d2.Ieff[i] = inertia / corr
+      d2.front[i] = false
+      for _, li in ipairs(frontLogicalIndices) do if li == i then d2.front[i] = true end end
+      d2.sHist[i] = {}; d2.bufS[i] = {}; d2.bufM[i] = {}; d2.bufBad[i] = {}
+    end
+  end
+
+  extensions.load('abstelemv2')
 end
 
 
--- detectMu(dtPhys) — 2kHz sensor fusion only
+-- detectMu(dtPhys) â€” 2kHz sensor fusion only
+safety.air = air   -- reachable from runTick/detectMu without a new upvalue
+safety.fg = fg
+
+-- D-estimator v2 (notes/D_ESTIMATOR_V2_DESIGN.md). L1: per-wheel utilized grip from wheel torque
+-- balance, level anchored to the accelerometer. L2: local quadratic fit of mu vs slip -> per-wheel
+-- state 0 unknown / 1 below peak / 2 near peak / 3 past peak. L3: per-axle slip-target offset stepped
+-- by state, kept only if the cycle-mean grip rose. Grip LEVEL never sets a target.
+local d2 = {
+  ENABLE   = true,
+  CONTROL  = true,
+  TIRE_CORR = 0.55, TIRE_CORR_DRIVEN = 0.40,   -- measured free-decel / (r/I) on etk800 (ledge session)
+  SIGMA    = 0.3,       -- m: tire relaxation length, lags slip to line up with force
+  WIN      = 30,        -- samples @200 Hz = 150 ms fit window
+  STEP     = 10,        -- fit every 50 ms
+  EXC_MIN  = 0.03,      -- slip excursion needed inside a window
+  Z_SIG    = 2.0,
+  BAND_LO  = 6.8, BAND_HI = 12.8,
+  VMIN     = 5.0,
+  STEP_SIZE = 0.0075, HOLD_S = 0.20, OFF_MAX = 0.08, REVERT_DROP = 0.015, PROBE_S = 0.40,
+  GAIN_MIN = 0.005, MUTE_S = 1.0,
+  GUARD_DROP = 0.40,    -- mu falling this fraction in 100 ms = surface change -> offsets reset
+  LOW_MU   = 0.5,       -- below this cycle-mean grip: scaled steps, no probing
+  r = {0.33, 0.33, 0.33, 0.33}, Ieff = {1.8, 1.8, 1.8, 1.8}, front = {false, false, true, true},
+  aw = {0, 0, 0, 0}, fx = {0, 0, 0, 0}, fz = {0, 0, 0, 0}, mu = {0, 0, 0, 0}, s = {0, 0, 0, 0},
+  sHist = {{}, {}, {}, {}}, histI = 0,
+  bufS = {{}, {}, {}, {}}, bufM = {{}, {}, {}, {}}, bufBad = {{}, {}, {}, {}}, bufI = 0, bufN = 0, sinceFit = 0,
+  raw = {0, 0, 0, 0}, prevRaw = {0, 0, 0, 0}, state = {0, 0, 0, 0}, stateAge = {0, 0, 0, 0},
+  winMean = {0, 0, 0, 0}, prevWinMean = {0, 0, 0, 0}, b = {0, 0, 0, 0}, q = {0, 0, 0, 0},
+  muPeak = {0, 0, 0, 0}, muLB = {0, 0, 0, 0}, sStar = {0, 0, 0, 0}, muSlow = {0, 0, 0, 0},
+  c = 1.0,
+  axleState = {0, 0}, off = {0, 0}, holdT = {0, 0}, holdSum = {0, 0}, holdN = {0, 0},
+  lastMean = {0, 0}, lastDir = {0, 0}, unknownT = {0, 0},
+  steps = 0, reverts = 0, guards = 0, fits = 0,
+}
+safety.d2 = d2
+
+-- Loose-surface deep-slip regime (design doc section 13): probe a deep target when the grip level
+-- sits in the loose band, keep it only while it keeps beating the normal target
+local deep = {
+  ENABLE_DEEP = true,
+  TARGET = 1.00, LO = 0.45, HI = 0.85, HI_MARGIN = 0.05, DROP = 0.40,
+  SETTLE_S = 0.30, SKIP_S = 0.20, PROBE_S = 0.45, GAIN = 0.03, RECHECK_S = 1.5, TREND_MAX = 0.03, lowT = 0,
+  FREEZE_TEST = false, LEVEL_GATE = true, RECOVER_MIN_S = 0.4, RECOVER_MAX_S = 1.5, recover = 0, recoverT = 0, regulated = false,
+  FAIL_COOL = 1.5, EXIT_COOL = 1.0, ABORT_COOL = 0.3, STEER_COOL = 0.5,
+  VMIN = 8.0, STEER_MAX = 0.05, YAW_MAX = 0.25, HEADING_MAX = 0.09, heading = 0,
+  mode = 0, active = false, lvl = 0, cool = 0, regT = 0, stopT = 0, t = 0, sum = 0, n = 0,
+  base = 0, mean = 0, deepT = 0, hiT = 0, refT = 0, refSum = 0, refN = 0, ref1 = 0, ref2 = 0,
+  probes = 0, keeps = 0, exits = 0, time = 0, fails = 0, aborts = 0, lastBase = 0, lastMeas = 0, lastN = 0, lastExit = 0,
+}
+safety.deep = deep
+
 local function detectMu(dtPhys)
   local rawSY = (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorY) or 0
-  latestRawSY = rawSY                              -- friction-only (for D-estimator)
   -- BeamNG's ffiSensors.sensorY is already body-frame, gravity-cancelled.
   latestSensorY = rawSY
 
@@ -759,18 +918,23 @@ local function detectMu(dtPhys)
   -- Integrate raw decel, floor at 0.
   fusedSpeed = math.max(0, fusedSpeed - latestSensorY * dtPhys)
 
-  local maxWs, minWs = 0, math.huge
+  local maxWs, minWs, maxIdx = 0, math.huge, 1
+  local wsSum = 0
   for i = 1, N_WHEELS do
     local ws = latestWheelSpeed[i]
-    if ws > maxWs then maxWs = ws end
+    wsSum = wsSum + ws
+    if ws > maxWs then maxWs = ws; maxIdx = i end
     if ws < minWs then minWs = ws end
   end
+  local avgWs = wsSum / N_WHEELS
 
   if isBraking then
     -- Snap-up gap gate (TEST): only re-anchor fused up to the fastest wheel if the one-tick
     -- gap is physically plausible (<= SNAP_GAP_MAX). A larger gap implies an impossible
     -- speed-up for a braking car => spiking/corrupt wheel reading => reject it.
-    if maxWs > fusedSpeed then
+    -- Low-speed cutout: suppress entirely when both fused and wheel-avg are essentially stopped.
+    local bothStopped = fusedSpeed < SNAP_MIN_SPEED and avgWs < SNAP_MIN_SPEED
+    if maxWs > fusedSpeed and not bothStopped then
       if (maxWs - fusedSpeed) <= SNAP_GAP_MAX then
         fusedSpeed = maxWs
         safety.snapUp = safety.snapUp + 1
@@ -823,6 +987,24 @@ local function detectMu(dtPhys)
     local ay = (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorX) or 0 -- lateral accel
     local az = (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorZ) or 0 -- vertical accel
 
+    -- (change #2) Filter the noisy signals before integration. dt-scaled EMAs => rate-independent.
+    -- pitch/roll rates: finite-differenced => noise-amplified, and multiplied by fwdVel below, so
+    -- they dominate vVert corruption. az: enters imuSpeed squared => noise biases the ceiling up.
+    -- ax deliberately untouched (brake-onset fidelity); ay gets deadband only (slide-onset fidelity).
+    if ENABLE_IMU_FILTERS then
+      local aRot = dtPhys / (TAU_ROT + dtPhys)
+      filtPitchRate = filtPitchRate + (pitchRate - filtPitchRate) * aRot
+      filtRollRate  = filtRollRate  + (rollRate  - filtRollRate)  * aRot
+      pitchRate = filtPitchRate
+      rollRate  = filtRollRate
+
+      local aAz = dtPhys / (TAU_AZ + dtPhys)
+      filtAz = filtAz + (az - filtAz) * aAz
+      az = filtAz
+      if math.abs(az) < ACCEL_DEADBAND then az = 0 end
+      if math.abs(ay) < ACCEL_DEADBAND then ay = 0 end
+    end
+
     -- Full 3D strapdown integration (Coriolis/Centripetal cross-coupling)
     local dotFwd  = ax + vLat * yr + (vVert or 0) * pitchRate
     local dotLat  = -ay - fwdVel * yr + (vVert or 0) * rollRate
@@ -833,7 +1015,19 @@ local function detectMu(dtPhys)
     vVert        = (vVert or 0) + dotVert * dtPhys
     fwdVel = newFwd                                          -- forward comp may pass through/below 0
 
-    if math.abs(yr) < 0.05 then vLat = vLat * 0.99 end       -- ~straight: bleed sideslip est. (noise)
+    -- Kinematic Lateral Anchor: Tie vLat decay to steering angle and yaw rate
+    local steering = math.abs(electrics.values.steering or 0)
+    local absYaw = math.abs(yr)
+    if absYaw < 0.05 and steering < 0.05 then
+      -- Driving perfectly straight: scrub phantom lateral noise aggressively
+      vLat = vLat * 0.95
+    else
+      -- Steering or drifting: use a dynamic decay that scales with yaw/steering severity.
+      -- This preserves the drift vector while slowing bleeding extreme sensor noise.
+      local adaptiveDecay = math.max(0.99, 1.0 - (0.01 / (1.0 + absYaw * 10.0 + steering * 5.0)))
+      vLat = vLat * adaptiveDecay
+    end
+    
     vVert = vVert * 0.98                                     -- always gently bleed vertical velocity to prevent drift
     imuSpeed = math.sqrt(fwdVel * fwdVel + vLat * vLat + vVert * vVert)      -- true 3D ground speed (magnitude)
   else
@@ -845,7 +1039,7 @@ local function detectMu(dtPhys)
 
   -- IMU speed ceiling: cap fused at the accelerometer-derived ground speed. Resync the estimate to
   -- the wheels ONLY while NOT braking and the wheels are trustworthy (agree AND not running away).
-  -- During braking the wheels under-read, so we never resync then — the integral is the truth.
+  -- During braking the wheels under-read, so we never resync then â€” the integral is the truth.
   if (not isBraking) and (maxWs - minWs) < 1.0 and maxWs <= imuSpeed + IMU_TRUST_WINDOW then
     fwdVel = maxWs
     vLat = 0                              -- wheels agree => assume no sideslip, reset lateral est.
@@ -853,14 +1047,122 @@ local function detectMu(dtPhys)
     imuSpeed = maxWs
   end
 
-  if fusedSpeed > imuSpeed then          -- exact ceiling: fused may not exceed the IMU ground speed
-    fusedSpeed = imuSpeed
-    safety.imuClamps = safety.imuClamps + 1
+  -- IMU ceiling constraint:
+  -- When NOT braking, use an EXACT hard cap so continuous wheelspin can't fight a slew rate.
+  -- When braking STARTS, do one final hard snap to guarantee a clean starting speed.
+  -- During the rest of the brake event, allow the integral to track freely.
+  local brakingJustStartedMu = isBraking and not wasBrakingMu
+  if not isBraking then
+    if fusedSpeed > imuSpeed then
+      fusedSpeed = imuSpeed
+      safety.imuClamps = safety.imuClamps + 1
+    end
+  elseif brakingJustStartedMu then
+    if fusedSpeed > imuSpeed then
+      fusedSpeed = imuSpeed
+      safety.imuClamps = safety.imuClamps + 1
+    end
+    if ra.ENABLE and ra.ONSET_ENABLE and maxWs > ra.VMIN then
+      local onsetTarget = maxWs / (1 - ra.ONSET_SLIP)
+      if fusedSpeed > onsetTarget then
+        fusedSpeed = onsetTarget; fwdVel = onsetTarget; vLat = 0; vVert = 0; imuSpeed = onsetTarget
+        ra.onsetFires = ra.onsetFires + 1
+      end
+    end
+  end
+  wasBrakingMu = isBraking
+
+  -- Slip-anchored fused stepdown (tunables at top). wheelMax lags true speed by ~the commanded
+  -- slip; if fused sits > RATIO * that expected gap above wheelMax for SUSTAIN seconds, snap fused
+  -- and the IMU strapdown down toward the wheel-implied true speed (SNAPFRAC into the [wheel,
+  -- slip-speed] window; 0.5 = middle). wheelMax is a hard floor (no wheel
+  -- can exceed true speed while braking), so this can only ever pull fused DOWN. s_t is the base
+  -- commanded slip target (slipTargets). With ENABLE_LOWSPEED_SLIP_DEEPEN OFF, effectiveTarget ==
+  -- slipTargets, so this IS the controller's actual commanded slip AND it's fused-independent
+  -- (slipTargets is D/accelerometer-derived) -- no circularity, 1:1 with the PID. If you re-enable
+  -- deepening, real slip grows at low speed and this under-predicts it (low-speed false fires);
+  -- switch s_t back to lastEffectiveTargets then.
+  if slipStepdownCooldown > 0 then slipStepdownCooldown = slipStepdownCooldown - dtPhys end
+  local deepHold = safety.deep and (safety.deep.active or safety.deep.recover > 0 or safety.deep.FREEZE_TEST)   -- wheels far below truth on purpose
+  if ENABLE_SLIP_STEPDOWN and isBraking and fusedSpeed > SLIP_STEPDOWN_VMIN and not deepHold then
+    local st = math.min(math.max(lastEffectiveTargets[maxIdx] or 0.14, SLIP_STEPDOWN_STFLOOR), 0.5)
+    local estimatedSlipSpeed = maxWs / (1 - st)     -- where true speed should be
+    local expectedGap = estimatedSlipSpeed - maxWs  -- = maxWs * st / (1 - st)
+    local measuredGap = fusedSpeed - maxWs
+    if measuredGap > SLIP_STEPDOWN_GAPFLOOR and measuredGap > SLIP_STEPDOWN_RATIO * expectedGap then
+      slipStepdownTimer = slipStepdownTimer + dtPhys
+      if slipStepdownTimer >= SLIP_STEPDOWN_SUSTAIN and slipStepdownCooldown <= 0 then
+        -- Land fused SNAPFRAC of the way from the fastest wheel up to the slip-implied speed
+        -- (0.5 = middle). wheelMax stays a hard floor since SNAPFRAC >= 0.
+        local snapTarget = maxWs + SLIP_STEPDOWN_SNAPFRAC * expectedGap
+        fusedSpeed = snapTarget
+        fwdVel     = snapTarget
+        vLat       = 0
+        vVert      = 0
+        imuSpeed   = snapTarget
+        slipStepdownTimer = 0
+        slipStepdownCooldown = SLIP_STEPDOWN_COOLDOWN
+        -- Count only real moving-car fires (airspeed > 1 mph); ignore stepdowns while the
+        -- brakes are just holding the car steady near standstill.
+        if (electrics.values.airspeed or 0) > 0.44704 then
+          slipStepdownCount = slipStepdownCount + 1
+        end
+      end
+    else
+      slipStepdownTimer = 0
+    end
+  else
+    slipStepdownTimer = 0
   end
 
   for i = 1, N_WHEELS do fusedPrevWs[i] = latestWheelSpeed[i] end
 
-  if maxWs < STANDSTILL_WS_THRESHOLD and fusedSpeed < STANDSTILL_FUSED_THRESHOLD then
+  -- Flight-gate fused dump (B), requested from runTick
+  if safety.fg and safety.fg.dumpTo then
+    local v = safety.fg.dumpTo; safety.fg.dumpTo = nil
+    if v > 1.0 and not deepHold then fusedSpeed = v; fwdVel = v; vLat = 0; vVert = 0; imuSpeed = v end
+  end
+
+  -- Gradient re-anchor (tunables in ra)
+  if ra.ENABLE then
+    local aRa = dtPhys / (ra.TAU + dtPhys)
+    ra.rate = ra.rate + (pitchRateLog - ra.rate) * aRa
+    ra.az = ra.az + (((sensors and sensors.ffiSensors and sensors.ffiSensors.sensorZ) or 0) - ra.az) * aRa
+    ra.support = 9.81 - ra.az
+    safety.air.support = ra.support
+    safety.fg.raFires = ra.fires; safety.fg.raDelta = ra.lastDelta; safety.fg.onsetFires = ra.onsetFires
+    if ra.cooldown > 0 then ra.cooldown = ra.cooldown - dtPhys end
+    local mag = math.abs(ra.rate)
+    if mag > ra.RATE_ON then
+      local sgn = ra.rate > 0 and 1 or -1
+      ra.onTime = (sgn == ra.sign) and (ra.onTime + dtPhys) or dtPhys
+      ra.sign = sgn
+      ra.settleTime = 0
+      if ra.onTime >= ra.ON_MIN_S then ra.armed = true end
+    elseif mag < ra.RATE_OFF then
+      ra.onTime = 0
+      ra.settleTime = (ra.support >= ra.SUPPORT_MIN) and (ra.settleTime + dtPhys) or 0
+      if ra.armed and ra.settleTime >= ra.SETTLE_S then
+        ra.armed = false
+        if ra.cooldown <= 0 and fusedSpeed > ra.VMIN and maxWs > 0 and not deepHold then
+          -- fastest wheel runs well under the commanded slip: use half the target; off-brake wheels = true
+          local st = math.min(math.max(lastEffectiveTargets[maxIdx] or 0.14, SLIP_STEPDOWN_STFLOOR), 0.5)
+          local target = isBraking and (maxWs / (1 - math.min(ra.SLIP_FRAC * st, 0.04))) or avgWs
+          local cap = ra.MAX_FRAC * fusedSpeed
+          local delta = math.max(-cap, math.min(cap, target - fusedSpeed))
+          fusedSpeed = fusedSpeed + delta
+          fwdVel = fusedSpeed; vLat = 0; vVert = 0; imuSpeed = fusedSpeed
+          ra.cooldown = ra.COOLDOWN_S
+          ra.fires = ra.fires + 1
+          ra.lastDelta = delta
+        end
+      end
+    end
+    ra.maxWs = maxWs; ra.avgWs = avgWs
+  end
+
+  if maxWs < STANDSTILL_WS_THRESHOLD and fusedSpeed < STANDSTILL_FUSED_THRESHOLD
+     and math.abs(latestSensorY) < STANDSTILL_ACCEL_MAX then
     standstillCounter = standstillCounter + 1
     if standstillCounter >= STANDSTILL_PHYS_TICKS then
       fusedSpeed = 0
@@ -868,7 +1170,6 @@ local function detectMu(dtPhys)
       fwdVel = 0
       vLat = 0
       vVert = 0
-      safety.stuck.timer = 0
     end
   else
     standstillCounter = 0
@@ -877,100 +1178,15 @@ local function detectMu(dtPhys)
 end
 
 
--- runProbe: config-driven probe, operates on its own state table
--- returns corrected speed or nil
-local function runProbe(dt, isBraking, cfg, st, probeName)
-  if not isBraking then
-    st.divergeTimer = 0
-    st.active = false
-    st.timer = 0
-    st.maxRear = 0
-    st.latched = false
-    st.latchCooldown = 0
-    return nil
-  end
-
-  if st.latched then
-    st.latchCooldown = st.latchCooldown - dt
-    if st.latchCooldown <= 0 then
-      st.latched = false
-    else
-      return nil
-    end
-  end
-
-  if st.active then
-    -- (2) rearNow uses rearLogicalIndices built from wheelRotatorIDs — no hardcoded 1,2
-    local rearSum, rearCount = 0, 0
-    for _, li in ipairs(rearLogicalIndices) do
-      rearSum = rearSum + (latestWheelSpeed[li] or 0)
-      rearCount = rearCount + 1
-    end
-    local rearNow = rearCount > 0 and (rearSum / rearCount) or 0
-    if rearNow > st.maxRear then st.maxRear = rearNow end
-
-    st.timer = st.timer - dt
-    if st.timer <= 0 then
-      st.active = false
-      st.latched = true
-      st.latchCooldown = cfg.rearmCooldown
-      return st.maxRear
-    end
-    return nil
-  end
-
-  local wsMin, wsMax, wsSum = math.huge, -math.huge, 0
-  for i = 1, N_WHEELS do
-    if latestWheelSpeed[i] < wsMin then wsMin = latestWheelSpeed[i] end
-    if latestWheelSpeed[i] > wsMax then wsMax = latestWheelSpeed[i] end
-    wsSum = wsSum + latestWheelSpeed[i]
-  end
-
-  local wheelsAgree = (wsMax - wsMin) < cfg.wheelAgree
-  local wheelAvg = wsSum / N_WHEELS
-  local fusedDiverged = fusedSpeed > (wheelAvg * cfg.fusedRatio)
-
-  local brakeOk = true
-  if cfg.requireLowBrake then
-    local totalApplied, totalMax = 0, 0
-    for i = 1, N_WHEELS do
-      totalApplied = totalApplied + safety.lastAbsCoefs[i] * origBrakeTorque[i]
-      totalMax = totalMax + origBrakeTorque[i]
-    end
-    brakeOk = totalMax > 0 and (totalApplied / totalMax) <= cfg.lowBrakeThreshold
-  end
-
-  if wheelsAgree and fusedDiverged and brakeOk then
-    st.divergeTimer = st.divergeTimer + dt
-    table.insert(safety.probeLogBuffer, string.format("%s,%.3f,%d,%.3f,%.3f,%.3f,%.3f,%s", probeName, os.clock(), safety.absEventID, fusedSpeed, wheelAvg, wsMax, wsMin, tostring(st.divergeTimer >= cfg.sustain)))
-    if st.divergeTimer >= cfg.sustain then
-      st.active = true
-      st.timer = cfg.duration
-      -- (2) initial maxRear from rearLogicalIndices
-      local rearSum, rearCount = 0, 0
-      for _, li in ipairs(rearLogicalIndices) do
-        rearSum = rearSum + (latestWheelSpeed[li] or 0)
-        rearCount = rearCount + 1
-      end
-      st.maxRear = rearCount > 0 and (rearSum / rearCount) or 0
-      st.divergeTimer = 0
-    end
-  else
-    st.divergeTimer = 0
-  end
-
-  return nil
-end
-
-
--- runTick(dt) — 200Hz: wheel-avg + PID + D-estimator
+-- runTick(dt) â€” 200Hz: wheel-avg + PID + D-estimator
 local function runTick(dt)
+  local air = safety.air
   local brakeInput = input.brake or 0
   local brakingJustStarted = brakeInput > 0 and not wasBraking
   wasBraking = brakeInput > 0
   local isBraking = brakeInput > 0
 
-  local abstelem = extensions.abstelemetry
+  local abstelem = extensions.abstelemv2
   local haveTelem = abstelem ~= nil and abstelem.setBrakes ~= nil
 
   -- Brake-event recorder: track peak fused-vs-airspeed divergence per event
@@ -986,7 +1202,7 @@ local function runTick(dt)
         }
       end
       currentBrakeEvent.duration = brakeSimTime - currentBrakeEvent.startTime
-      -- Track peak ABSOLUTE divergence (m/s) — only above 5 mph so low-speed sensor noise
+      -- Track peak ABSOLUTE divergence (m/s) â€” only above 5 mph so low-speed sensor noise
       -- doesn't corrupt the peak with meaningless tiny-denominator readings.
       if airspeed >= BRAKE_EVENT_MIN_PEAK_AIR then
         local diffMs = fusedSpeed - airspeed
@@ -1004,16 +1220,6 @@ local function runTick(dt)
         saveBrakeEvents()
       end
       currentBrakeEvent = nil
-      if #safety.probeLogBuffer > 0 then
-        local f = io.open("probe_log.csv", "a")
-        if f then
-          for _, line in ipairs(safety.probeLogBuffer) do
-            f:write(line .. "\n")
-          end
-          f:close()
-        end
-        safety.probeLogBuffer = {}
-      end
     end
   end
 
@@ -1103,23 +1309,7 @@ local function runTick(dt)
     for i = 1, N_WHEELS do wa.prevWs[i] = latestWheelSpeed[i] end
   end
 
-  -- Safety probes (both run every tick; combined wins if both fire same tick).
-  -- Probe 1 = combined (fast). Probe 2 = extended (catches long-held fused-above-avg).
-  -- Both use the PID's per-wheel absCoef output (safety.lastAbsCoefs) for the low-brake gate.
-  if safety.ENABLE_PROBE then
-    local c1 = runProbe(TICK_STEP, isBraking, safety.configs.combined, safety.probe, "FAST_PROBE")
-    local c2 = runProbe(TICK_STEP, isBraking, safety.configs.extended, safety.probe2, "DRIFT_PROBE")
-    if c1 then safety.probesF = safety.probesF + 1 end          -- "Fast" probe (combined) fired
-    if c2 then safety.probesDrift = safety.probesDrift + 1 end  -- "Drift" probe (extended) fired
-    local probeCorrection = c1 or c2
-    if probeCorrection then
-      fusedSpeed = probeCorrection
-      safety.snapDn = safety.snapDn + 1
-      safety.probes = safety.probes + 1
-    end
-  end
-
-  -- carSpeed = fusedSpeed only (this is the 1F variant — no virtualAirspeed)
+  -- carSpeed = fusedSpeed only (this is the 1F variant â€” no virtualAirspeed)
   local carSpeed = fusedSpeed
   absSpeedSource.wheelAvgActive = false
   absSpeedSource.fusedActive = true
@@ -1134,44 +1324,135 @@ local function runTick(dt)
 
   -- Reset per-wheel PID and counters on new brake event
   if brakingJustStarted then
-    safety.absEventID = safety.absEventID + 1
-    safety.probeLogBuffer = {}
     for i = 1, N_WHEELS do
       slipIntegral[i] = 0
       lastSlipError[i] = 0
-      safety.engineFightTimer[i] = 0
     end
     safety.snapUp = 0
-    safety.snapDn = 0
     safety.snapUpRej = 0
-    safety.probes = 0
-    safety.probesF = 0
-    safety.probesDrift = 0
   end
 
-  -- Rear-only brake-rotation assist (experimental): pick the inside-rear wheel from steering, scale
-  -- by steering magnitude past a decent deadband (90mph lane changes use small steer -> stay off;
-  -- hairpins/chicanes use big steer -> on), then fade via the yaw limiter so the car can't rotate
-  -- past what the steering commands.
-  local rotInsideRear, rotAssist = 0, 0
-  if rot.ENABLE and isBraking and carSpeed > rot.MIN_SPEED then
-    local steer = electrics.values.steering_input or 0
-    local steerMag = math.abs(steer)
-    if steerMag > rot.DEADBAND then
-      -- (2) pick inside rear from rearLogicalIndices: steer>0 = LEFT turn -> inside = RL (logical 2)
-      -- rearLogicalIndices[1]=RR (right rear), rearLogicalIndices[2]=RL (left rear) — convention held
-      rotInsideRear = (steer > 0) and rearLogicalIndices[2] or rearLogicalIndices[1]
-      local steerEff = math.min((steerMag - rot.DEADBAND) / (1 - rot.DEADBAND), 1)
-      local commandedYaw = steer * carSpeed * rot.YAW_CMD_GAIN
-      local yawScale = 1
-      if math.abs(commandedYaw) > 0.01 then
-        yawScale = math.max(0, math.min(1, (math.abs(commandedYaw) - math.abs(yawRate)) / rot.YAW_LIMIT_BAND))
+  -- Airborne axle detection (tunables in air); logical order 1=RR 2=RL 3=FR 4=FL
+  if air.ENABLE then
+    if not isBraking then
+      air.front = false; air.rear = false; air.frontT = 0; air.rearT = 0
+      for i = 1, N_WHEELS do air.tick[i] = 0 end
+    else
+      local supported = (air.support or 9.81) >= air.SUPPORT_MIN
+      air.supportedT = supported and (air.supportedT + dt) or 0
+      local bodyDecel = latestSensorY
+      for i = 1, N_WHEELS do
+        local a = (latestWheelSpeed[i] - prevTickWheelSpeed[i]) / dt
+        air.wAcc[i] = air.wAcc[i] + (a - air.wAcc[i]) * 0.5
+        local freeHold = math.abs(air.wAcc[i]) < air.HOLD_ACC and bodyDecel > air.BODY_DECEL
+                         and (safety.lastAbsCoefs[i] or 1) < 0.05
+        local spinDown = air.wAcc[i] < -air.SPINDOWN_ACC
+        air.tick[i] = (freeHold or spinDown or not supported) and (air.tick[i] + dt) or 0
       end
-      rotAssist = rot.ASSIST_MAX * steerEff * yawScale
+      local function axleSpinDown(a1, a2)
+        return air.wAcc[a1] < -air.SPINDOWN_ACC or air.wAcc[a2] < -air.SPINDOWN_ACC
+      end
+      local function axle(a1, a2, flag, tKey, cKey)
+        if not air[flag] then
+          local o1, o2 = (a1 == 1) and 3 or 1, (a1 == 1) and 4 or 2
+          local iceLock = axleSpinDown(o1, o2) and not (air.support < air.SUPPORT_MIN)
+          if air.tick[a1] >= air.ENTRY_S and air.tick[a2] >= air.ENTRY_S and not iceLock then
+            air[flag] = true; air[tKey] = 0; air.events = air.events + 1; air[cKey] = air[cKey] + 1
+          end
+        else
+          air[tKey] = air[tKey] + dt
+          local landed = air.supportedT >= air.EXIT_S or air.wAcc[a1] > air.SPINUP_ACC
+                         or air.wAcc[a2] > air.SPINUP_ACC or air[tKey] >= air.TIMEOUT_S
+          if landed then
+            air[flag] = false
+            for _, i in ipairs({a1, a2}) do
+              local landSlip = 1 - latestWheelSpeed[i] / math.max(carSpeed, 0.5)
+              if landSlip < (slipTargets[i] or 0.14) then
+                slipIntegral[i] = math.max(slipIntegral[i], air.REARM_DUTY / KI)
+                air.rearms = (air.rearms or 0) + 1
+              end
+              lastSlipError[i] = 0
+            end
+          end
+        end
+      end
+      axle(1, 2, "rear", "rearT", "rearEvents")
+      axle(3, 4, "front", "frontT", "frontEvents")
     end
   end
-  electrics.values.abs_rotAssist = rotAssist
-  electrics.values.abs_rotWheel = rotInsideRear
+
+  -- Flight gate (tunables in fg)
+  do
+    local fg = safety.fg
+    if fg.ENABLE_FG then
+      if not isBraking then
+        fg.open = false; fg.dumped = false; fg.sawHigh = false; fg.inBandT = 0
+        for i = 1, N_WHEELS do fg.tick[i] = 0 end
+      else
+        local sup = air.support or 9.81
+        local outBand = sup < fg.BAND_LO or sup > fg.BAND_HI
+        fg.outBandAgo = outBand and 0 or (fg.outBandAgo + dt)
+        for i = 1, N_WHEELS do
+          local a = (latestWheelSpeed[i] - prevTickWheelSpeed[i]) / dt
+          fg.wAcc[i] = fg.wAcc[i] + (a - fg.wAcc[i]) * 0.5
+          local tq = (safety.lastAbsCoefs[i] or 1) * (origBrakeTorque[i] or 0) * brakeInput
+          local thr = math.max(fg.FLOOR, fg.SAFETY * (fg.k[i] or 0) * tq)
+          local hit
+          local duty = safety.lastAbsCoefs[i] or 1
+          fg.relT[i] = (duty < fg.REL_DUTY) and (fg.relT[i] + dt) or 0
+          if fg.relT[i] >= fg.REL_S then fg.wasRel[i] = true end
+          if fg.TRIGGER == "release" then
+            local slip = 1 - latestWheelSpeed[i] / math.max(carSpeed, 0.5)
+            hit = fg.relT[i] >= fg.REL_S and fg.wAcc[i] < fg.REL_SPINUP and slip > fg.REL_SLIP
+                  and fg.outBandAgo <= fg.REL_MEM_S
+          else
+            hit = outBand and (fg.TRIGGER == "support" or fg.wAcc[i] < -thr)
+          end
+          fg.tick[i] = hit and (fg.tick[i] + dt) or 0
+        end
+        local frontHit = fg.tick[3] >= fg.DWELL and fg.tick[4] >= fg.DWELL
+        local rearHit  = fg.tick[1] >= fg.DWELL and fg.tick[2] >= fg.DWELL
+        if not fg.open then
+          if frontHit or rearHit then
+            fg.open = true; fg.openT = 0; fg.sawHigh = false; fg.sawLow = false; fg.inBandT = 0; fg.dumped = false
+            for i = 1, N_WHEELS do fg.wasRel[i] = fg.relT[i] >= fg.REL_S end
+            fg.lockD = dest.consensusD; fg.events = fg.events + 1
+            if frontHit then fg.frontEvents = fg.frontEvents + 1 else fg.rearEvents = fg.rearEvents + 1 end
+          end
+        else
+          fg.openT = fg.openT + dt
+          if sup > fg.BAND_HI then fg.sawHigh = true end
+          if sup < fg.FLIGHT_SUP then fg.sawLow = true end
+          fg.inBandT = outBand and 0 or (fg.inBandT + dt)
+          local bReady
+          if fg.B_MODE == "duty" then
+            -- a wheel the PID had released is taking torque again and has finished spinning up
+            bReady = false
+            for i = 1, N_WHEELS do
+              if fg.wasRel[i] and (safety.lastAbsCoefs[i] or 0) > 2 * fg.REL_DUTY and fg.wAcc[i] < fg.REL_SPINUP then bReady = true end
+            end
+          else
+            bReady = fg.inBandT >= fg.B_SETTLE and (fg.sawHigh or fg.B_MODE == "any")
+                     and (fg.TRIGGER ~= "support" or fg.sawLow)
+          end
+          if fg.B_ENABLE and not fg.dumped and bReady then
+            local mw = 0
+            for i = 1, N_WHEELS do if latestWheelSpeed[i] > mw then mw = latestWheelSpeed[i] end end
+            fg.dumpTo = mw * (1 + fg.B_PCT); fg.dumped = true; fg.dumps = fg.dumps + 1
+          end
+          if fg.inBandT >= fg.HOLD_S or fg.openT >= fg.TIMEOUT_S then
+            fg.open = false
+            if fg.A_ENABLE and (fg.A_MODE == "hold" or fg.sawLow) then
+              local w = dest.window
+              for j = 1, dest.WINDOW_SIZE do w[j] = nil end
+              dest.windowIdx = 1; dest.stableTicks = 0
+              dest.consensusD = fg.lockD; dest.stableD = fg.lockD
+            end
+          end
+        end
+      end
+    end
+  end
 
   -- Per-wheel PID on slip error
   local cmd = {}
@@ -1187,17 +1468,33 @@ local function runTick(dt)
     effectiveTargets[i] = 0
   end
 
+  local lowSpeedBoost = 1.0
+  if carSpeed < safety.lowSpeed.SPEED_THRESH then
+    local ratio = 1.0 - (carSpeed / safety.lowSpeed.SPEED_THRESH)
+    lowSpeedBoost = 1.0 + (safety.lowSpeed.BOOST_MAX - 1.0) * ratio * ratio
+  end
+  lastLowSpeedBoost = lowSpeedBoost
+
   for i = 1, N_WHEELS do
     local slot = wheelToBrakeMap[i]
 
-    if carSpeed > MIN_SPEED and isBraking then
+    local axleAir = air.ENABLE and ((i >= 3) and air.front or air.rear)
+    if carSpeed > MIN_SPEED and isBraking and axleAir then
+      -- airborne: hold PID state, output the floor only (early floor for short hops)
+      local tAir = (i >= 3) and air.frontT or air.rearT
+      local floor = (tAir < air.FLOOR_EARLY_S) and air.FLOOR_EARLY or air.FLOOR
+      absCoefs[i] = floor
+      effectiveTargets[i] = slipTargets[i]
+      safety.slipRatios[i] = 0
+      cmd[slot] = floor * brakeInput
+    elseif carSpeed > MIN_SPEED and isBraking then
       -- per-wheel turn-compensated reference speed (vehicle speed + yaw geometry)
       -- Yaw compensation disabled as requested:
       
       local vRef = math.max(carSpeed, 0.5)
       local slip = math.max(0, math.min((vRef - latestWheelSpeed[i]) / vRef, 1))
-      local effectiveTarget = math.min(slipTargets[i] + (AXLE_BIAS[i] or 0) + (1 + dest.consensusD) / carSpeed, 1.0)
-      if i == rotInsideRear then effectiveTarget = math.min(effectiveTarget + rotAssist, 1.0) end
+      local deepen = ENABLE_LOWSPEED_SLIP_DEEPEN and ((1 + dest.consensusD) / carSpeed) or 0
+      local effectiveTarget = math.min(slipTargets[i] + deepen, 1.0)
       local slipError = effectiveTarget - slip
 
       slipIntegral[i] = math.max(INTEGRAL_MIN, math.min(INTEGRAL_MAX, slipIntegral[i] + slipError * dt))
@@ -1214,13 +1511,21 @@ local function runTick(dt)
       -- Low-speed brake boost: lightly scales up brake command below 30mph (13.41m/s) 
       -- to firmly halt the car. Uses a quadratic curve so it's gentle at 25mph and stronger near 0mph.
       if carSpeed < safety.lowSpeed.SPEED_THRESH then
-        local ratio = 1.0 - (carSpeed / safety.lowSpeed.SPEED_THRESH)
-        local boost = 1.0 + (safety.lowSpeed.BOOST_MAX - 1.0) * ratio * ratio
-        absCoef = math.min(1.0, absCoef * boost)
+        absCoef = math.min(1.0, absCoef * lowSpeedBoost)
+      end
+
+      -- Lockup guard: wheel decel too fast -> soft dump brake to 70% immediately
+      local wheelDecel = (latestWheelSpeed[i] - prevTickWheelSpeed[i]) / dt
+      if wheelDecel < WHEEL_DECEL_LIMIT then
+        absCoef = absCoef * 0.70
+        slipIntegral[i] = math.max(slipIntegral[i], 0)  -- no negative windup
       end
 
       slipRatios[i] = slip
       slipErrors[i] = slipError
+      lastSlipErrors[i] = slipError
+      lastSlipDerivatives[i] = slipErrorDerivative
+
       absCoefs[i] = absCoef
       effectiveTargets[i] = effectiveTarget
       safety.slipRatios[i] = slip
@@ -1237,77 +1542,284 @@ local function runTick(dt)
   end
   for i = 1, N_WHEELS do safety.lastAbsCoefs[i] = absCoefs[i] end
 
-  -- EBD: compute front brake share from this tick's absCoefs + origBrakeTorque.
-  -- Use a very heavy EMA so single-frame ABS pumps don't falsely trigger.
-  if isBraking and carSpeed > ebd.MIN_SPEED and ebd.ENABLE then
-    local frontT, rearT = 0, 0
-    for i = 1, N_WHEELS do
-      local t = absCoefs[i] * (origBrakeTorque[i] or 0)
-      local isFront = false
-      for _, fi in ipairs(frontLogicalIndices) do if i == fi then isFront = true; break end end
-      if isFront then frontT = frontT + t else rearT = rearT + t end
-    end
-    local totalT = frontT + rearT
-    local rawShare = totalT > 1 and (frontT / totalT) or 1.0
-    ebd.frontShareEMA = ebd.frontShareEMA * ebd.SMOOTH + rawShare * (1.0 - ebd.SMOOTH)
-
-    if ebd.frontShareEMA < ebd.TRIGGER_FRAC then
-      ebd.sustainTimer = ebd.sustainTimer + dt
-      if ebd.sustainTimer >= ebd.SUSTAIN then
-        ebd.active = true
-        -- Logarithmic scale: deeper the front share drops, harder the rear is cut.
-        -- At frontShareEMA = TRIGGER_FRAC (0.25) -> rearScale = 1.0 (just activated)
-        -- At frontShareEMA = 0.10 -> rearScale ~0.56
-        -- At frontShareEMA = 0.0  -> rearScale = REAR_MIN (0.40)
-        local ratio = math.max(0, ebd.frontShareEMA / ebd.TRIGGER_FRAC)
-        ebd.rearScale = math.max(ebd.REAR_MIN, ratio * ratio)  -- quadratic ramp
-      end
-    else
-      ebd.sustainTimer = 0
-      -- Self-healing: ramp rearScale back to 1.0 when fronts recover
-      ebd.rearScale = math.min(1.0, ebd.rearScale + dt * 0.5)
-      if ebd.rearScale >= 1.0 then ebd.active = false end
-    end
-
-    -- Apply rearScale to rear wheel commands
-    if ebd.active then
+  -- D-estimator v2 (tunables in d2; see notes/D_ESTIMATOR_V2_DESIGN.md)
+  do
+    local d2 = safety.d2
+    if d2.ENABLE then
+      local sup = (safety.air and safety.air.support) or 9.81
+      local inBand = sup >= d2.BAND_LO and sup <= d2.BAND_HI
+      local ax = latestSensorY                                   -- + = decel (body)
+      local dFz = grip.mass * ax * grip.H_CG / (2 * grip.WHEELBASE)
+      local sumFx = 0
+      d2.histI = (d2.histI % 8) + 1
       for i = 1, N_WHEELS do
-        local isFront = false
-        for _, fi in ipairs(frontLogicalIndices) do if i == fi then isFront = true; break end end
-        if not isFront then
-          local slot = wheelToBrakeMap[i]
-          cmd[slot] = cmd[slot] * ebd.rearScale
-          absCoefs[i] = absCoefs[i] * ebd.rearScale
+        local slot = wheelToBrakeMap[i] or i
+        local wr = wheels.wheelRotators[slot - 1]
+        local a = (latestWheelSpeed[i] - prevTickWheelSpeed[i]) / dt
+        d2.aw[i] = d2.aw[i] + (a - d2.aw[i]) * 0.5
+        local tb = (wr and wr.brakingTorque) or 0
+        local tp = (wr and wr.propulsionTorque) or 0
+        local rr = d2.r[i]
+        local fx = (tb - tp) / rr + (d2.Ieff[i] / (rr * rr)) * d2.aw[i]
+        local fz = grip.Fz0[i] * (sup / 9.81) + (d2.front[i] and dFz or -dFz)
+        if fz < 200 then fz = 200 end
+        d2.fx[i] = fx; d2.fz[i] = fz; sumFx = sumFx + fx
+        local mu = d2.c * fx / fz
+        d2.mu[i] = d2.mu[i] + (mu - d2.mu[i]) * 0.5              -- same EMA as slip
+        local sr = 1 - latestWheelSpeed[i] / math.max(carSpeed, 0.5)
+        d2.s[i] = d2.s[i] + (sr - d2.s[i]) * 0.5
+        d2.sHist[i][d2.histI] = d2.s[i]
+        -- surface-change guard on the slow level
+        local prev = d2.muSlow[i]
+        d2.muSlow[i] = d2.muSlow[i] + (d2.mu[i] - d2.muSlow[i]) * 0.05    -- ~100 ms
+        if isBraking and prev > 0.3 and d2.mu[i] < prev * (1 - d2.GUARD_DROP) and d2.stateAge[i] > 0.2 then
+          d2.off[1] = 0; d2.off[2] = 0; d2.guards = d2.guards + 1; d2.stateAge[i] = 0
+        end
+        if isBraking then
+          if d2.mu[i] > d2.muLB[i] then d2.muLB[i] = d2.mu[i] end
+        end
+      end
+      if isBraking and ax > 3 and sumFx > 2000 and inBand then
+        d2.cNum = (d2.cNum or 0) + (grip.mass * ax - (d2.cNum or 0)) * 0.1     -- 50 ms EMAs @200 Hz
+        d2.cDen = (d2.cDen or 1) + (sumFx - (d2.cDen or 1)) * 0.1
+        local cInst = d2.cNum / math.max(d2.cDen, 1)
+        if cInst < 0.5 then cInst = 0.5 elseif cInst > 1.5 then cInst = 1.5 end
+        d2.c = d2.c + (cInst - d2.c) * 0.01
+      end
+      if not isBraking then
+        d2.bufN = 0; d2.bufI = 0; d2.sinceFit = 0
+        for i = 1, N_WHEELS do d2.state[i] = 0; d2.raw[i] = 0; d2.prevRaw[i] = 0; d2.muLB[i] = 0 end
+        for a2 = 1, 2 do d2.holdT[a2] = 0; d2.holdSum[a2] = 0; d2.holdN[a2] = 0; d2.lastDir[a2] = 0; d2.lastMean[a2] = 0; d2.unknownT[a2] = 0 end
+        if d2.failT then d2.failT[1][1] = 0; d2.failT[1][2] = 0; d2.failT[2][1] = 0; d2.failT[2][2] = 0 end
+        if d2.lastLastMean then d2.lastLastMean[1] = 0; d2.lastLastMean[2] = 0 end
+      elseif carSpeed > d2.VMIN then
+        -- ring buffer (200 Hz): slip lagged by SIGMA / v to line up with force
+        local lag = math.floor((d2.SIGMA / math.max(carSpeed, 1.0)) / dt + 0.5)
+        if lag > 7 then lag = 7 end
+        d2.bufI = (d2.bufI % d2.WIN) + 1
+        if d2.bufN < d2.WIN then d2.bufN = d2.bufN + 1 end
+        local hi = ((d2.histI - lag - 1) % 8) + 1
+        for i = 1, N_WHEELS do
+          d2.bufS[i][d2.bufI] = d2.sHist[i][hi] or d2.s[i]
+          d2.bufM[i][d2.bufI] = d2.mu[i]
+          d2.bufBad[i][d2.bufI] = (not inBand or (safety.lastAbsCoefs[i] or 1) < 0.05) and 1 or 0
+          d2.stateAge[i] = d2.stateAge[i] + dt
+        end
+        d2.sinceFit = d2.sinceFit + 1
+        if d2.bufN >= d2.WIN and d2.sinceFit >= d2.STEP then
+          d2.sinceFit = 0; d2.fits = d2.fits + 1
+          for i = 1, N_WHEELS do
+            local S, M, B = d2.bufS[i], d2.bufM[i], d2.bufBad[i]
+            local n = d2.WIN; local bad = 0; local smin, smax, sx = 1, -1, 0
+            for k = 1, n do bad = bad + B[k]; local v = S[k]; sx = sx + v; if v < smin then smin = v end; if v > smax then smax = v end end
+            local raw = 0
+            if bad == 0 and (smax - smin) >= d2.EXC_MIN then
+              local mx = sx / n
+              -- detrend slip and mu against time first: both drift up as the car slows
+              local tm = (n + 1) / 2; local stt, sty, sts, sym = 0, 0, 0, 0
+              for k = 1, n do sym = sym + M[k] end
+              local my = sym / n
+              for k = 1, n do
+                local kk = ((k - d2.bufI - 1) % n) + 1          -- chronological index of ring slot k
+                local tc = kk - tm
+                stt = stt + tc * tc; sty = sty + tc * (M[k] - my); sts = sts + tc * (S[k] - mx)
+              end
+              local trM = (stt > 0) and (sty / stt) or 0
+              local trS = (stt > 0) and (sts / stt) or 0
+              local s2, s3, s4, sy, sxy, sx2y = 0, 0, 0, 0, 0, 0
+              for k = 1, n do
+                local kk = ((k - d2.bufI - 1) % n) + 1
+                local tc = kk - tm
+                local x = (S[k] - mx) - trS * tc; local y = M[k] - trM * tc; local x2 = x * x
+                s2 = s2 + x2; s3 = s3 + x2 * x; s4 = s4 + x2 * x2; sy = sy + y; sxy = sxy + x * y; sx2y = sx2y + x2 * y
+              end
+              -- normal equations [n 0 s2; 0 s2 s3; s2 s3 s4] [a b q] = [sy sxy sx2y]
+              local det = n * (s2 * s4 - s3 * s3) - s2 * (s2 * s2)
+              if det > 1e-12 then
+                local A = (sy * (s2 * s4 - s3 * s3) + s2 * (sxy * s3 - s2 * sx2y)) / det
+                local Bc = (n * (sxy * s4 - s3 * sx2y) + sy * s3 * s2 - s2 * s2 * sxy) / det
+                local Q = (n * (s2 * sx2y - s3 * sxy) - sy * s2 * s2) / det
+                local rss = 0
+                for k = 1, n do
+                  local kk = ((k - d2.bufI - 1) % n) + 1
+                  local tc = kk - tm
+                  local x = (S[k] - mx) - trS * tc; local y = M[k] - trM * tc
+                  local e = y - (A + Bc * x + Q * x * x); rss = rss + e * e
+                end
+                local sig2 = rss / (n - 3)
+                local invBB = (n * s4 - s2 * s2) / det          -- (X'X)^-1 [2][2]
+                local invQQ = (n * s2) / det                     -- (X'X)^-1 [3][3]
+                local seB = math.sqrt(math.max(sig2 * invBB, 1e-12))
+                local seQ = math.sqrt(math.max(sig2 * invQQ, 1e-12))
+                local zb, zq = Bc / seB, Q / seQ
+                if zb > d2.Z_SIG then raw = 1 elseif zb < -d2.Z_SIG then raw = 3 elseif zq < -d2.Z_SIG then raw = 2 end
+                d2.b[i] = Bc; d2.q[i] = Q
+              end
+              d2.prevWinMean[i] = d2.winMean[i]; d2.winMean[i] = mx
+            end
+            -- publish: two consecutive agree, or a crossing (below <-> past) = near peak
+            local pub = 0
+            if raw ~= 0 and raw == d2.prevRaw[i] then pub = raw
+            elseif (raw == 1 and d2.prevRaw[i] == 3) or (raw == 3 and d2.prevRaw[i] == 1) then
+              pub = 2; d2.sStar[i] = 0.5 * (d2.winMean[i] + d2.prevWinMean[i])
+            end
+            if pub ~= d2.state[i] then d2.stateAge[i] = 0 end
+            d2.state[i] = pub; d2.prevRaw[i] = raw; d2.raw[i] = raw
+            if pub == 2 then
+              local mmax = 0
+              for k = 1, n do if M[k] > mmax then mmax = M[k] end end
+              d2.muPeak[i] = (d2.muPeak[i] > 0) and (d2.muPeak[i] * 0.7 + mmax * 0.3) or mmax
+            end
+          end
+          -- axle states: 1 = rear (logical 1,2), 2 = front (3,4); rear select-low (past wins)
+          for a2 = 1, 2 do
+            local w1, w2 = (a2 == 1) and 1 or 3, (a2 == 1) and 2 or 4
+            local s1, s2s = d2.state[w1], d2.state[w2]
+            if s1 == s2s then d2.axleState[a2] = s1
+            elseif a2 == 1 and (s1 == 3 or s2s == 3) then d2.axleState[a2] = 3
+            else d2.axleState[a2] = 0 end
+          end
+        end
+        -- L3A: per-axle target offset, stepped by state, kept only if cycle-mean grip rose
+        if d2.CONTROL and inBand and safety.deep.mode == 0 then
+          for a2 = 1, 2 do
+            local w1, w2 = (a2 == 1) and 1 or 3, (a2 == 1) and 2 or 4
+            d2.holdT[a2] = d2.holdT[a2] + dt
+            local mAx = 0.5 * (d2.mu[w1] + d2.mu[w2])
+            d2.holdSum[a2] = d2.holdSum[a2] + mAx; d2.holdN[a2] = d2.holdN[a2] + 1
+            d2.holdSq = d2.holdSq or {0, 0}; d2.holdSq[a2] = d2.holdSq[a2] + mAx * mAx
+            if d2.holdT[a2] >= d2.HOLD_S then
+              local nH = math.max(d2.holdN[a2], 1)
+              local mean = d2.holdSum[a2] / nH
+              local var = math.max(d2.holdSq[a2] / nH - mean * mean, 0)
+              local se = math.sqrt(var / nH) * 2.0
+              d2.holdSq[a2] = 0
+              d2.lastLastMean = d2.lastLastMean or {0, 0}
+              local predicted = d2.lastMean[a2]
+              if d2.lastLastMean[a2] > 0 then predicted = d2.lastMean[a2] + 0.5 * (d2.lastMean[a2] - d2.lastLastMean[a2]) end
+              d2.failT = d2.failT or {{0, 0}, {0, 0}}; d2.lastProbe = d2.lastProbe or {0, 0}
+              local ft = d2.failT[a2]
+              ft[1] = math.max(ft[1] - d2.HOLD_S, 0); ft[2] = math.max(ft[2] - d2.HOLD_S, 0)
+              local ld = d2.lastDir[a2]
+              if ld ~= 0 and d2.lastMean[a2] > 0 and (mean - predicted) < math.max(d2.GAIN_MIN * predicted, se) then
+                -- no clear gain above the trend: undo the step and mute that direction for a while
+                d2.off[a2] = d2.off[a2] - ld * (d2.lastStep or d2.STEP_SIZE); d2.reverts = d2.reverts + 1
+                ft[(ld > 0) and 1 or 2] = d2.MUTE_S; d2.lastDir[a2] = 0
+              else
+                local st = d2.axleState[a2]; local dir = 0
+                local lowGrip = mean < d2.LOW_MU          -- narrow peak: finer steps, no probing
+                if st == 1 then dir = 1 elseif st == 3 then dir = -1 elseif st == 2 then dir = 0
+                elseif not lowGrip then
+                  d2.unknownT[a2] = d2.unknownT[a2] + d2.HOLD_S
+                  if d2.unknownT[a2] >= d2.PROBE_S then
+                    dir = (d2.lastProbe[a2] > 0) and -1 or 1          -- alternate probe direction
+                    d2.unknownT[a2] = 0
+                  end
+                end
+                if st ~= 0 then d2.unknownT[a2] = 0 end
+                if dir ~= 0 and ft[(dir > 0) and 1 or 2] > 0 then dir = 0 end
+                if dir ~= 0 and st == 0 then d2.lastProbe[a2] = dir end
+                local stepSz = d2.STEP_SIZE * math.max(0.25, math.min(1.0, mean / 1.0))
+                local o = d2.off[a2] + dir * stepSz
+                if o > d2.OFF_MAX then o = d2.OFF_MAX elseif o < -d2.OFF_MAX then o = -d2.OFF_MAX end
+                d2.off[a2] = o; d2.lastDir[a2] = dir; d2.lastStep = stepSz
+                if dir ~= 0 then d2.steps = d2.steps + 1 end
+              end
+              d2.lastLastMean[a2] = d2.lastMean[a2]; d2.lastMean[a2] = mean; d2.holdT[a2] = 0; d2.holdSum[a2] = 0; d2.holdN[a2] = 0
+            end
+          end
+        end
+      end
+      -- deep-slip regime: 0 normal, 1 deep target on trial, 2 deep, 3 normal target on trial
+      local deep = safety.deep
+      if deep.ENABLE_DEEP then
+        local lvl = (sup > 3) and (ax / sup) or 0                  -- body decel in g, support-normalized
+        deep.lvl = deep.lvl + (lvl - deep.lvl) * 0.1
+        if deep.active then deep.heading = deep.heading + (grip.yawRate or 0) * dt else deep.heading = 0 end
+        if deep.wasActive and not deep.active then deep.recover = 1; deep.recoverT = 0 end
+        deep.wasActive = deep.active
+        if deep.recover > 0 then
+          deep.recoverT = deep.recoverT + dt
+          local maxWs = 0
+          for i = 1, N_WHEELS do if latestWheelSpeed[i] > maxWs then maxWs = latestWheelSpeed[i] end end
+          local tgt = lastEffectiveTargets[1] or 0.2
+          local back = maxWs >= (1 - 2 * tgt) * carSpeed
+          if deep.recoverT >= deep.RECOVER_MAX_S or (deep.recoverT >= deep.RECOVER_MIN_S and back) then deep.recover = 0 end
+        end
+        -- the regime only exists under a real stop: reference and regulation flag belong to this stop
+        local hard = isBraking and (input.brake or 0) > 0.5
+        if not hard then deep.regulated = false; deep.refT = 0; deep.refSum = 0; deep.refN = 0
+        else for i = 1, N_WHEELS do if (safety.lastAbsCoefs[i] or 1) < 0.95 then deep.regulated = true end end end
+        local turning = math.abs(electrics.values.steering or 0) > deep.STEER_MAX or math.abs(grip.yawRate or 0) > deep.YAW_MAX
+          or math.abs(deep.heading) > deep.HEADING_MAX
+        deep.cool = math.max(deep.cool - dt, 0)
+        if not hard then
+          deep.mode = 0; deep.active = false; deep.regT = 0; deep.stopT = 0; deep.ref1 = 0; deep.ref2 = 0
+        else
+          deep.stopT = deep.stopT + dt
+          if inBand and deep.regulated then
+            deep.refT = deep.refT + dt; deep.refSum = deep.refSum + deep.lvl; deep.refN = deep.refN + 1
+            if deep.refT >= 0.1 then
+              deep.ref1 = deep.ref2; deep.ref2 = deep.refSum / math.max(deep.refN, 1)
+              deep.refT = 0; deep.refSum = 0; deep.refN = 0
+            end
+          end
+          local m = deep.mode
+          if m == 0 then
+            -- entry: no level or flatness gate, only support in band, straight, speed, cooldown, and a 0.2 s reference
+            local levelOk = (not deep.LEVEL_GATE) or (deep.ref2 >= deep.LO and deep.ref2 <= deep.HI)
+            if inBand and deep.ref1 > 0 and deep.regulated and levelOk and not turning and carSpeed > deep.VMIN and deep.cool <= 0 then
+              deep.base = 0.5 * (deep.ref1 + deep.ref2)
+              deep.mode = 1; deep.active = true; deep.t = 0; deep.sum = 0; deep.n = 0; deep.probes = deep.probes + 1
+            end
+          elseif m == 1 or m == 3 then
+            deep.t = deep.t + dt
+            if turning then
+              deep.mode = 0; deep.active = false; deep.cool = deep.STEER_COOL; deep.exits = deep.exits + 1; deep.lastExit = 1
+            else
+              if deep.t >= deep.SKIP_S and inBand then deep.sum = deep.sum + deep.lvl; deep.n = deep.n + 1 end
+              if deep.t >= deep.PROBE_S then
+                local meas = (deep.n > 0) and (deep.sum / deep.n) or 0
+                deep.lastMeas = meas; deep.lastN = deep.n
+                if m == 1 then
+                  deep.lastBase = deep.base
+                  if deep.n < 10 then
+                    deep.mode = 0; deep.active = false; deep.cool = deep.ABORT_COOL; deep.aborts = deep.aborts + 1   -- bumps: no verdict
+                  elseif meas >= deep.base * (1 + deep.GAIN) then
+                    deep.mode = 2; deep.active = true; deep.keeps = deep.keeps + 1; deep.deepT = 0; deep.mean = meas; deep.hiT = 0
+                  else
+                    deep.mode = 0; deep.active = false; deep.cool = deep.FAIL_COOL; deep.fails = deep.fails + 1
+                  end
+                elseif deep.n >= 10 and meas > deep.mean * (1 - deep.GAIN) then
+                  deep.mode = 0; deep.active = false; deep.cool = deep.EXIT_COOL; deep.exits = deep.exits + 1; deep.lastExit = 4   -- normal is as good
+                else
+                  deep.mode = 2; deep.active = true; deep.deepT = 0
+                end
+              end
+            end
+          elseif m == 2 then
+            deep.deepT = deep.deepT + dt; deep.time = deep.time + dt
+            if inBand then
+              deep.mean = deep.mean + (deep.lvl - deep.mean) * 0.05
+              deep.hiT = (deep.lvl > deep.HI + deep.HI_MARGIN) and (deep.hiT + dt) or 0
+              deep.lowT = (deep.deepT > 0.3 and deep.lvl < deep.mean * (1 - deep.DROP)) and (deep.lowT + dt) or 0
+            end
+            if turning then
+              deep.mode = 0; deep.active = false; deep.cool = deep.STEER_COOL; deep.exits = deep.exits + 1; deep.lastExit = 1
+            elseif deep.hiT >= 0.1 then
+              deep.mode = 0; deep.active = false; deep.cool = deep.EXIT_COOL; deep.exits = deep.exits + 1; deep.hiT = 0; deep.lastExit = 2   -- asphalt again
+            elseif deep.lowT >= 0.1 then
+              deep.mode = 0; deep.active = false; deep.cool = deep.EXIT_COOL; deep.exits = deep.exits + 1; deep.lastExit = 3; deep.lowT = 0   -- grip collapsed
+            elseif deep.deepT >= deep.RECHECK_S and carSpeed > deep.VMIN then
+              deep.mode = 3; deep.active = false; deep.t = 0; deep.sum = 0; deep.n = 0
+              if deep.ref1 > 0 then deep.mean = 0.5 * (deep.ref1 + deep.ref2) end
+            end
+          end
         end
       end
     end
-  else
-    if not isBraking then
-      ebd.frontShareEMA = 1.0
-      ebd.sustainTimer  = 0
-      ebd.active        = false
-      ebd.rearScale     = 1.0
-    end
   end
-  electrics.values.abs_ebdActive = ebd.active and ebd.rearScale or 1.0
-
-  -- prevTickWheelSpeed for next tick's lockup guard
-  for i = 1, N_WHEELS do
-    prevTickWheelSpeed[i] = latestWheelSpeed[i]
-  end
-
-  -- Gas+Brake seeker lockout: if throttle and brake are both pressed, pause the
-  -- Peak-Hunter. The instant gas is released the seeker resumes mid-brake event.
-  if ph.ENABLE_THROTTLE_LOCKOUT then
-    local throttleIn = input.throttle or 0
-    if throttleIn > 0.05 and isBraking then
-      ph.seekerSuppressed = true
-    else
-      ph.seekerSuppressed = false  -- gas released: resume immediately, even if still braking
-    end
-  else
-    ph.seekerSuppressed = false
-  end
+  for i = 1, N_WHEELS do lastEffectiveTargets[i] = effectiveTargets[i] end
 
   -- Brake Delay Simulator & Global Peak-Hunter
   local totalTorque = 0
@@ -1332,73 +1844,163 @@ local function runTick(dt)
     end
   end
 
-  if isBraking and carSpeed > MIN_ADAPT_SPEED and decelCount > 0 and not ph.seekerSuppressed then
-    avgWheelDecel = avgWheelDecel / decelCount
-    local instantEff = totalTorque / (avgWheelDecel + 1e-5)
+  local throttleInput = input.throttle or 0
+  if ph.ENABLE_THROTTLE_LOCKOUT then
+    ph.seekerSuppressed = (brakeInput > 0.05 and throttleInput > 0.05)
+  else
+    ph.seekerSuppressed = false
+  end
+
+  if ph.ENABLE and isBraking and not ph.seekerSuppressed then
+    local latAccel = (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorX) or 0
+    local isStraight = math.abs(latAccel) < 3.0 -- roughly 0.3g
     
-    ph.effSum = ph.effSum + instantEff
-    ph.effCount = ph.effCount + 1
+    local frontError = (math.abs(lastSlipError[3] or 0) + math.abs(lastSlipError[4] or 0)) / 2
+    local rearError = (math.abs(lastSlipError[1] or 0) + math.abs(lastSlipError[2] or 0)) / 2
+    local currentError = (ph.turn == 1) and frontError or rearError
+    local pidSettled = currentError < 0.02
     
-    ph.trimTimer = ph.trimTimer + dt
-    if ph.trimTimer >= ph.TRIM_INTERVAL then
-      ph.trimTimer = 0
-      
-      local blockAverageEff = ph.effSum / ph.effCount
-      if blockAverageEff < ph.lastEfficiency then
-        ph.trimDirection = -ph.trimDirection
+    if carSpeed > 6.7 and isStraight then
+      if ph.phase == 0 then -- STEP PHASE
+        -- Adaptive step size based on speed (fusedSpeed mapped from 15mph to 60mph)
+        local speedRatio = math.max(0, math.min(1, (carSpeed - 6.7) / 20.0))
+        local stepSize = 0.005 + (0.05 - 0.005) * speedRatio
+        
+        if ph.turn == 1 then
+          ph.frontOffset = math.max(-0.05, math.min(0.15, ph.frontOffset + ph.frontDirection * stepSize))
+        else
+          ph.rearOffset = math.max(-0.05, math.min(0.15, ph.rearOffset + ph.rearDirection * stepSize))
+        end
+        ph.phase = 1
+        ph.settleTicks = 0
+        
+      elseif ph.phase == 1 then -- SETTLE PHASE
+        if pidSettled then
+          ph.settleTicks = ph.settleTicks + 1
+          if ph.settleTicks >= 8 then -- 40ms settled (at 200Hz)
+            ph.phase = 2
+            ph.measureTicks = 0
+            ph.startSpeed = fusedSpeed
+          end
+        else
+          ph.settleTicks = 0 -- Reset if disturbed
+        end
+        
+      elseif ph.phase == 2 then -- MEASURE PHASE
+        if pidSettled and isStraight then
+          ph.measureTicks = ph.measureTicks + 1
+          if ph.measureTicks >= 10 then -- 50ms measured
+            ph.phase = 3
+          end
+        else
+          ph.phase = 1
+          ph.settleTicks = 0
+        end
+        
+      elseif ph.phase == 3 then -- EVALUATE PHASE
+        local decel = (ph.startSpeed - fusedSpeed) / (ph.measureTicks * dt)
+        
+        if ph.turn == 1 then
+          local diff = decel - ph.lastFrontEfficiency
+          if math.abs(diff) < math.max(0.001, math.abs(ph.lastFrontEfficiency) * 0.005) then
+            -- Flat, hold direction (kills noise thrashing bug)
+          elseif diff < 0 then
+            ph.frontDirection = -ph.frontDirection
+          end
+          ph.lastFrontEfficiency = decel
+          ph.turn = 2 -- handoff
+        else
+          local diff = decel - ph.lastRearEfficiency
+          if math.abs(diff) < math.max(0.001, math.abs(ph.lastRearEfficiency) * 0.005) then
+            -- Flat, hold direction
+          elseif diff < 0 then
+            ph.rearDirection = -ph.rearDirection
+          end
+          ph.lastRearEfficiency = decel
+          ph.turn = 1 -- handoff
+        end
+        ph.phase = 0
       end
-      ph.lastEfficiency = blockAverageEff
-      ph.trimOffset = math.max(ph.trimMin, math.min(ph.trimMax, ph.trimOffset + (ph.trimStep * ph.trimDirection)))
-      
-      ph.effSum = 0
-      ph.effCount = 0
     end
-  elseif not isBraking or ph.seekerSuppressed then
-    if ph.seekerSuppressed then
-      -- Flush stale accumulator so old data doesn't contaminate the next window
-      ph.effSum  = 0
-      ph.effCount = 0
-      -- Do NOT reset trimOffset — seeker resumes from last good position
-    else
-      ph.trimOffset = 0
-      ph.trimTimer = 0
-      ph.lastEfficiency = 0
-      ph.effSum = 0
-      ph.effCount = 0
+  else
+    if not isBraking then
+      if carSpeed > 13.41 then -- ~30mph (Reset fully indicating a new driving context)
+        ph.frontOffset = 0
+        ph.rearOffset = 0
+        ph.lastFrontEfficiency = 0
+        ph.lastRearEfficiency = 0
+      else
+        -- Soft decay toward 0 instead of snap to 0
+        ph.frontOffset = ph.frontOffset * 0.999
+        ph.rearOffset = ph.rearOffset * 0.999
+      end
+      ph.phase = 0
+      ph.settleTicks = 0
+      ph.measureTicks = 0
+      ph.turn = 1
     end
   end
 
   -- D estimator: peak sensorY decel over a sliding window, D = peak / g.
-  -- No Pacejka shape assumption — avoids the overestimation the particle filter had on ice.
-  if isBraking and carSpeed > MIN_ADAPT_SPEED then
-    local measuredDecel = latestRawSY  -- friction-only, slope-independent
+  -- No Pacejka shape assumption â€” avoids the overestimation the particle filter had on ice.
+  if isBraking and carSpeed > MIN_ADAPT_SPEED and not (safety.fg.A_ENABLE and safety.fg.A_MODE == "hold" and safety.fg.open) then
+    local measuredDecel = latestSensorY  -- friction-only, slope-independent
+
+    if dest.undoTicks > 0 then
+      dest.undoTicks = dest.undoTicks - 1
+      local lvl = dest.shadowLevel
+      local inBand = measuredDecel >= lvl * (1 - dest.SNAP_UNDO_BAND)
+                 and measuredDecel <= lvl * (1 + dest.SNAP_UNDO_BAND)
+      dest.undoInBand = inBand and (dest.undoInBand + 1) or 0
+      if dest.undoInBand >= dest.SNAP_UNDO_CONFIRM then
+        -- transient confirmed: put the pre-snap estimator back
+        local sw, w = dest.shadowWindow, dest.window
+        for j = 1, dest.WINDOW_SIZE do w[j] = sw[j] end
+        dest.windowIdx = dest.shadowIdx
+        dest.consensusD = dest.shadowD
+        dest.stableD = dest.shadowStableD
+        dest.stableTicks = dest.shadowStableTicks
+        dest.snapUndos = dest.snapUndos + 1
+        dest.undoTicks = 0
+        dest.undoInBand = 0
+      end
+    end
 
     if measuredDecel > dest.UPDATE_MIN_DECEL then
       dest.windowIdx = (dest.windowIdx % dest.WINDOW_SIZE) + 1
       dest.window[dest.windowIdx] = measuredDecel
 
-      local peakDecel = 0
-      for j = 1, dest.WINDOW_SIZE do
-        if dest.window[j] and dest.window[j] > peakDecel then
-          peakDecel = dest.window[j]
-        end
-      end
+      local aggDecel = aggregateDecelWindow()   -- peak / mean / topN per D_AGG_MODE
 
       -- 0.91 = weight-transfer grip boost + 200Hz peak-sampling bias
-      local instantD = math.max(dest.EST_MIN, math.min(dest.EST_MAX, peakDecel / 9.81 * 0.91))
+      local instantD = math.max(dest.EST_MIN, math.min(dest.EST_MAX, aggDecel / 9.81 * 0.91))
 
       -- Surface-change detection: D jump >40% = reset window
       dest.stableTicks = dest.stableTicks + 1
       if dest.stableTicks > dest.SETTLE_TICKS then
         local dChange = math.abs(instantD - dest.stableD) / math.max(dest.stableD, 0.1)
         if dChange > dest.CHANGE_THRESHOLD then
-          dest.window = {}
+          local w = dest.window
+          if dest.SNAP_UNDO_ENABLE and instantD > dest.stableD then
+            local sw = dest.shadowWindow
+            for j = 1, dest.WINDOW_SIZE do sw[j] = w[j] end
+            dest.shadowIdx = dest.windowIdx
+            dest.shadowD = dest.consensusD
+            dest.shadowStableD = dest.stableD
+            dest.shadowStableTicks = dest.stableTicks
+            dest.shadowLevel = dest.stableD * 9.81 / 0.91   -- inverse of the D mapping
+            dest.undoTicks = dest.SNAP_UNDO_TICKS
+            dest.undoInBand = 0
+          end
+          for j = 1, dest.WINDOW_SIZE do w[j] = nil end
           dest.windowIdx = 1
-          dest.window[1] = measuredDecel
+          w[1] = measuredDecel
           dest.retroResets = dest.retroResets + 1
+          dest.snapTotal = dest.snapTotal + 1
           dest.stableTicks = 0
           dest.consensusD = instantD
-          ph.trimOffset = 0  -- Reset Peak-Hunter on massive surface change
+          ph.frontOffset = 0; ph.rearOffset = 0
+          ph.lastFrontEfficiency = 0; ph.lastRearEfficiency = 0
         end
         dest.stableD = dest.consensusD
       end
@@ -1406,15 +2008,65 @@ local function runTick(dt)
       -- Smooth consensus toward peak-decel estimate
       dest.consensusD = dest.consensusD * dest.SMOOTHING + instantD * (1.0 - dest.SMOOTHING)
 
-      -- Map D to slip target
-      dest.baseTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX,
-        0.04 + dest.consensusD * 0.10))
+      -- Map D to slip target ([FLAT TARGET EXPERIMENT] fixed base bypasses the D-law)
+      if USE_FIXED_SLIP_TARGET then
+        dest.baseTarget = FIXED_SLIP_TARGET
+      else
+        dest.baseTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX,
+          0.04 + dest.consensusD * 0.10))
+      end
+
+      -- Track average D over the ABS event (Bug/Feature request)
+      local isAbsActive = false
+      for j = 1, N_WHEELS do
+        if (safety.lastAbsCoefs[j] or 1) < 0.99 then
+          isAbsActive = true
+          break
+        end
+      end
+      
+      if isAbsActive then
+        if not dest.absEventActive then
+          dest.absEventActive = true
+          dest.absEventSum = 0
+          dest.absEventTicks = 0
+          dest.absEventTotalTicks = 0
+          dest.retroResets = 0
+        end
+        
+        dest.absEventTotalTicks = dest.absEventTotalTicks + 1
+        
+        -- Filter out first 100ms (20 ticks at 200Hz) and any readings below 18mph (8.04 m/s)
+        if dest.absEventTotalTicks > 20 and carSpeed >= 8.04 then
+          dest.absEventSum = dest.absEventSum + dest.consensusD
+          dest.absEventTicks = dest.absEventTicks + 1
+        end
+      else
+        if dest.absEventActive then
+          if dest.absEventTicks >= 10 and dest.retroResets == 0 then -- >50ms at 200Hz
+            local avgD = dest.absEventSum / dest.absEventTicks
+            dest.consensusD = avgD
+            dest.stableD = avgD
+          end
+          dest.absEventActive = false
+        end
+      end
 
       if not grip.ENABLE_PERWHEEL_D then
-        -- Escape hatch: original global broadcast — every wheel takes the global target.
-        local finalTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, dest.baseTarget + ph.trimOffset))
+        -- Escape hatch: original global broadcast â€” every wheel takes the global target.
         for j = 1, N_WHEELS do
-          slipTargets[j] = slipTargets[j] * TARGET_SMOOTHING + finalTarget * (1.0 - TARGET_SMOOTHING)
+          grip.Dwheel[j] = dest.consensusD
+          local isFront = false
+          for _, li in ipairs(frontLogicalIndices) do if li == j then isFront = true end end
+          local trim = isFront and ph.frontOffset or ph.rearOffset
+          local d2off = (safety.d2.ENABLE and safety.d2.CONTROL) and safety.d2.off[isFront and 2 or 1] or 0
+          local finalTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, dest.baseTarget + trim + d2off))
+          if safety.deep.active then
+            slipTargets[j] = safety.deep.TARGET                     -- deep regime: no smoothing either way
+          else
+            if slipTargets[j] > finalTarget + 0.15 then slipTargets[j] = finalTarget end
+            slipTargets[j] = slipTargets[j] * TARGET_SMOOTHING + finalTarget * (1.0 - TARGET_SMOOTHING)
+          end
         end
       else
         -- Per-wheel ANCHORED brake-acceptance. dest.consensusD sets the LEVEL; per-wheel
@@ -1460,14 +2112,22 @@ local function runTick(dt)
             local Dj = dest.consensusD * (grip.gEMA[j] / gBar)
             if Dj < dest.EST_MIN then Dj = dest.EST_MIN elseif Dj > dest.EST_MAX then Dj = dest.EST_MAX end
             grip.Dwheel[j] = Dj
-            local baseTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, 0.04 + Dj * 0.10))
+            local isFront = false
+            for _, li in ipairs(frontLogicalIndices) do if li == j then isFront = true end end
+            local trim = isFront and ph.frontOffset or ph.rearOffset
+            local baseTarget = USE_FIXED_SLIP_TARGET and FIXED_SLIP_TARGET
+              or math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, 0.04 + Dj * 0.10 + trim))
             slipTargets[j] = slipTargets[j] * TARGET_SMOOTHING + baseTarget * (1.0 - TARGET_SMOOTHING)
           end
         else
           -- no confident wheel (light braking / all locked / first ticks): fall back to global
-          local finalTarget = math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, dest.baseTarget + ph.trimOffset))
           for j = 1, N_WHEELS do
             grip.Dwheel[j] = dest.consensusD
+            local isFront = false
+            for _, li in ipairs(frontLogicalIndices) do if li == j then isFront = true end end
+            local trim = isFront and ph.frontOffset or ph.rearOffset
+            local finalTarget = USE_FIXED_SLIP_TARGET and FIXED_SLIP_TARGET
+              or math.max(SLIP_TARGET_MIN, math.min(SLIP_TARGET_MAX, dest.baseTarget + trim))
             slipTargets[j] = slipTargets[j] * TARGET_SMOOTHING + finalTarget * (1.0 - TARGET_SMOOTHING)
           end
         end
@@ -1475,17 +2135,48 @@ local function runTick(dt)
     end
   end
 
-  -- (Rear 20% ease-off during active probe removed per request — probing now captures the rear
-  -- wheel speed at full PID brake command, with no brake reduction.)
-
   -- Push brake commands
   if haveTelem then
     abstelem.setBrakes(cmd)
   end
+  
+  local telemetryLogger = extensions.absTelemetryLogger
+  if telemetryLogger and telemetryLogger.setCustomTelemetry then
+    telemetryLogger.setCustomTelemetry("Dynamic_ABS", {
+      fusedSpeed = fusedSpeed,
+      nextD = dest.consensusD,
+      slipTargets = {slipTargets[1], slipTargets[2], slipTargets[3], slipTargets[4]},
+      pidOut = {safety.lastAbsCoefs[1] or 1, safety.lastAbsCoefs[2] or 1, safety.lastAbsCoefs[3] or 1, safety.lastAbsCoefs[4] or 1},
+      maxBrake = {origBrakeTorque[1] or 0, origBrakeTorque[2] or 0, origBrakeTorque[3] or 0, origBrakeTorque[4] or 0},
+      trimOffset = ph.rearOffset or 0,
+      trimDirection = ph.rearDirection or 1,
+      pidGains = {KP, KI, KD},
+      imuSpeed = imuSpeed,
+      imuClamps = safety.imuClamps,
+      fwdVel = fwdVel,
+      vLat = vLat,
+      vVert = vVert,
+      effectiveTarget = {lastEffectiveTargets[4], lastEffectiveTargets[3], lastEffectiveTargets[2], lastEffectiveTargets[1]},
+      gripD = {grip.Dwheel[4], grip.Dwheel[3], grip.Dwheel[2], grip.Dwheel[1]},
+      gripConfident = (function() local n=0 for j=1,4 do if grip.confident[j] then n=n+1 end end return n end)(),
+      lowSpeedBoost = lastLowSpeedBoost,
+      frontTrimOffset = ph.frontOffset or 0,
+      frontTrimDirection = ph.frontDirection or 1,
+      slipError = {lastSlipErrors[4], lastSlipErrors[3], lastSlipErrors[2], lastSlipErrors[1]},
+      slipIntegralState = {slipIntegral[4], slipIntegral[3], slipIntegral[2], slipIntegral[1]},
+      slipDerivative = {lastSlipDerivatives[4], lastSlipDerivatives[3], lastSlipDerivatives[2], lastSlipDerivatives[1]},
+      snapUpCount = safety.snapUp
+    })
+  end
+
+  -- prevTickWheelSpeed for next tick's lockup guard
+  for i = 1, N_WHEELS do
+    prevTickWheelSpeed[i] = latestWheelSpeed[i]
+  end
 end
 
 
--- update(dtPhys) — 2kHz orchestrator
+-- update(dtPhys) â€” 2kHz orchestrator
 local function update(dtPhys)
   detectMu(dtPhys)
   brakeSimTime = brakeSimTime + dtPhys
@@ -1497,31 +2188,32 @@ local function update(dtPhys)
   end
 
   -- Data Logging (50Hz) to track down IMU drift
-  local brakeInput = electrics.values.brake or 0
+  local brakeInput = math.max(input.brake or 0, electrics.values.brake or 0)  -- test machine drives input.brake
   if brakeInput > 0.01 then
     if not isLogging then
-      isLogging = true
+      isLogging = ENABLE_IMU_LOG
       logData = {}
-      table.insert(logData, "Time,Airspeed,FusedSpeed,ImuSpeed,FwdVel,VLat,VVert,Ax,Ay,Az,YawRate,PitchRate,RollRate,Pitch,Roll")
+      table.insert(logData, "Time,Airspeed,FusedSpeed,ImuSpeed,FwdVel,VLat,VVert,Ax,Ay,Az,YawRate,PitchRate,RollRate,Pitch,Roll,RaRate,Armed,Fires,Support,MaxWs,AvgWs,St,AirF,AirR")
       logTimer = 0
     end
     
     logTimer = logTimer + dtPhys
     if logTimer >= 0.02 then
       logTimer = 0
-      local row = string.format("%.3f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f", 
+      local row = string.format("%.3f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.3f,%d,%d,%.2f,%.2f,%.2f,%.3f,%d,%d", 
         brakeSimTime, electrics.values.airspeed or 0, fusedSpeed, imuSpeed, fwdVel, vLat, vVert,
         -latestSensorY, (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorX) or 0,
         (sensors and sensors.ffiSensors and sensors.ffiSensors.sensorZ) or 0,
-        (obj:getYawAngularVelocity() or 0), pitchRateLog, rollRateLog, pitchLog, rollLog
+        (obj:getYawAngularVelocity() or 0), pitchRateLog, rollRateLog, pitchLog, rollLog,
+        ra.rate, ra.armed and 1 or 0, ra.fires, ra.support, ra.maxWs, ra.avgWs, (lastEffectiveTargets[1] or 0), safety.air.front and 1 or 0, safety.air.rear and 1 or 0
       )
       table.insert(logData, row)
     end
   else
     if isLogging then
       isLogging = false
-      if #logData > 1 then
-        local file = io.open("abs_imu_log.csv", "w")
+      if #logData > 40 then  -- skip brake taps (20 ms rows)
+        local file = io.open(string.format("abs_imu_log_%07d.csv", math.floor(brakeSimTime * 10)), "w")
         if file then
           file:write(table.concat(logData, "\n"))
           file:close()
@@ -1547,6 +2239,39 @@ local function update(dtPhys)
   electrics.values.abs_consensusD = dest.consensusD
   electrics.values.abs_baseTarget = dest.baseTarget
   electrics.values.abs_retroResets = dest.retroResets
+  electrics.values.abs_snapUndos = dest.snapUndos
+  electrics.values.abs_snapTotal = dest.snapTotal
+  electrics.values.abs_snapPending = dest.undoTicks
+  electrics.values.abs_reanchors = ra.fires
+  electrics.values.abs_reanchorDelta = ra.lastDelta
+  electrics.values.abs_onsetSnaps = ra.onsetFires
+  electrics.values.abs_airEvents = air.events
+  electrics.values.abs_airFront = air.frontEvents
+  electrics.values.abs_airRear = air.rearEvents
+  electrics.values.abs_airRearms = air.rearms or 0
+  electrics.values.abs_fgEvents = fg.events
+  electrics.values.abs_fgDumps = fg.dumps
+  electrics.values.abs_fgFront = fg.frontEvents
+  electrics.values.abs_fgRear = fg.rearEvents
+  electrics.values.abs_d2_offF = d2.off[2]
+  electrics.values.abs_d2_offR = d2.off[1]
+  electrics.values.abs_d2_c = d2.c
+  electrics.values.abs_d2_steps = d2.steps
+  electrics.values.abs_d2_reverts = d2.reverts
+  electrics.values.abs_d2_guards = d2.guards
+  electrics.values.abs_d2_stateF = d2.axleState[2]
+  electrics.values.abs_d2_stateR = d2.axleState[1]
+  electrics.values.abs_deep_mode = safety.deep.mode
+  electrics.values.abs_deep_probes = safety.deep.probes
+  electrics.values.abs_deep_keeps = safety.deep.keeps
+  electrics.values.abs_deep_exits = safety.deep.exits
+  electrics.values.abs_deep_time = safety.deep.time
+  electrics.values.abs_deep_fails = safety.deep.fails
+  electrics.values.abs_deep_aborts = safety.deep.aborts
+  electrics.values.abs_deep_lastBase = safety.deep.lastBase
+  electrics.values.abs_deep_lastMeas = safety.deep.lastMeas
+  electrics.values.abs_deep_lastN = safety.deep.lastN
+  electrics.values.abs_deep_lastExit = safety.deep.lastExit
   electrics.values.abs_surface = getCondition(slipTargets[1])
   electrics.values.abs_wheelAvgSpeed = wa.speed
   electrics.values.abs_wheelAvgSpeedTwo = wa.speedTwo
@@ -1563,34 +2288,45 @@ local function update(dtPhys)
   electrics.values.abs_yawRate = grip.yawRate   -- rad/s; for verifying the turn-correction sign
 
   -- UI update at 5Hz
+  local d2ui = function(i)
+    local d2 = safety.d2
+    if not d2.ENABLE then return string.format("%.2f", grip.Dwheel[i]) end
+    local L = ({[0] = "?", [1] = "B", [2] = "N", [3] = "P"})[d2.state[i]] or "?"
+    return string.format("%.2f %s", d2.mu[i], L)
+  end
   uiAccum = uiAccum + dtPhys
   if uiAccum >= 0.2 then
     uiAccum = 0
     if guihooks then
       guihooks.trigger('updateABSGrip', {
-        RR = { surfaceMu = string.format("%.2f", grip.Dwheel[1]), slipMu = string.format("%.2f", safety.slipRatios[1]) },
-        RL = { surfaceMu = string.format("%.2f", grip.Dwheel[2]), slipMu = string.format("%.2f", safety.slipRatios[2]) },
-        FR = { surfaceMu = string.format("%.2f", grip.Dwheel[3]), slipMu = string.format("%.2f", safety.slipRatios[3]) },
-        FL = { surfaceMu = string.format("%.2f", grip.Dwheel[4]), slipMu = string.format("%.2f", safety.slipRatios[4]) },
+        RR = { surfaceMu = d2ui(1), slipMu = string.format("%.2f", safety.slipRatios[1]) },
+        RL = { surfaceMu = d2ui(2), slipMu = string.format("%.2f", safety.slipRatios[2]) },
+        FR = { surfaceMu = d2ui(3), slipMu = string.format("%.2f", safety.slipRatios[3]) },
+        FL = { surfaceMu = d2ui(4), slipMu = string.format("%.2f", safety.slipRatios[4]) },
         speeds = {
           airspeed = string.format("%.1f", electrics.values.airspeed or 0),
           fusedSpeed = string.format("%.1f", fusedSpeed or 0),
           plausibleSpeed = string.format("%.1f", wa.speed or 0),
           virtualAirspeed = string.format("%.1f", electrics.values.virtualAirspeed or 0),
           snapUpCount = safety.snapUp,
-          snapDnCount = safety.snapDn,
           snapUpRejCount = safety.snapUpRej,
           imuSpeed = string.format("%.1f", imuSpeed or 0),
           imuClampCount = safety.imuClamps,
-          phantomVetoCount = safety.phantomVetoes,
-          stuckResyncCount = safety.stuckResyncs,
+          slipStepdownCount = slipStepdownCount,
           vLat = string.format("%.1f", vLat or 0),
           yaw2d = string.format("%.2f", grip.yawRate or 0),
-          probeCount = safety.probes,
-          probeFastCount = safety.probesF,
-          probeDriftCount = safety.probesDrift,
           fusedActive = absSpeedSource.fusedActive,
-          engineFight = (safety.engineFightTimer[1] > 0 or safety.engineFightTimer[2] > 0 or safety.engineFightTimer[3] > 0 or safety.engineFightTimer[4] > 0),
+          nextDEstimate = string.format("%.2f", dest.consensusD),
+          reanchorCount = safety.fg.raFires or 0,
+          reanchorDelta = string.format("%+.1f", safety.fg.raDelta or 0),
+          onsetSnaps = safety.fg.onsetFires or 0,
+          flightEvents = safety.fg.events or 0,
+          flightDumps = safety.fg.dumps or 0,
+          flightOpen = safety.fg.open and true or false,
+          support = string.format("%.1f", safety.air.support or 9.81),
+          d2off = string.format("%+.3f/%+.3f", safety.d2.off[2], safety.d2.off[1]),
+          d2c = string.format("%.2f", safety.d2.c),
+          d2steps = safety.d2.steps, d2reverts = safety.d2.reverts,
         }
       })
     end
@@ -1614,20 +2350,21 @@ local function clearBrakeEvents()
 end
 
 
-local function setProbes(val) safety.ENABLE_PROBE = val end
-local function setProbeSustain(val) safety.configs.combined.sustain = val end
 local function getCounts()
-  return {probes = safety.probes, probesF = safety.probesF,
-          probesDrift = safety.probesDrift,
-          snapUp = safety.snapUp, snapDn = safety.snapDn,
-          }
+  return {snapUp = safety.snapUp, snapUpRej = safety.snapUpRej,
+          imuClamps = safety.imuClamps}
 end
 local function resetCounts()
-  safety.probes = 0; safety.probesF = 0; safety.probesDrift = 0
-  safety.snapUp = 0; safety.snapDn = 0; safety.snapUpRej = 0; safety.imuClamps = 0
-  safety.phantomVetoes = 0; safety.stuckResyncs = 0
+  safety.snapUp = 0; safety.snapUpRej = 0; safety.imuClamps = 0
 end
 local function setPerWheelD(val) grip.ENABLE_PERWHEEL_D = val end
+
+-- Switch the D-estimator window aggregation live (no reload). mode = "peak"|"mean"|"topn".
+local function setDAggMode(mode, topn)
+  if mode then D_AGG_MODE = mode end
+  if topn then D_AGG_TOPN = topn end
+  print("[ABS-1FEX] D_AGG_MODE = " .. tostring(D_AGG_MODE) .. "  TOPN = " .. tostring(D_AGG_TOPN))
+end
 
 local function getGripDebug()
   return {D = {grip.Dwheel[1], grip.Dwheel[2], grip.Dwheel[3], grip.Dwheel[4]},
@@ -1636,15 +2373,42 @@ local function getGripDebug()
           consensusD = dest.consensusD, enabled = grip.ENABLE_PERWHEEL_D}
 end
 
+local function getTelemetry()
+  return {
+    fusedSpeed = fusedSpeed,
+    nextD = dest.consensusD,
+    slipTargets = {slipTargets[1], slipTargets[2], slipTargets[3], slipTargets[4]},
+    pidOut = {safety.lastAbsCoefs[1] or 1, safety.lastAbsCoefs[2] or 1, safety.lastAbsCoefs[3] or 1, safety.lastAbsCoefs[4] or 1},
+    trimOffset = ph.rearOffset or 0,
+    trimDirection = ph.rearDirection or 1,
+    pidGains = {KP, KI, KD},
+    imuSpeed = imuSpeed,
+    imuClamps = safety.imuClamps,
+    fwdVel = fwdVel,
+    vLat = vLat,
+    vVert = vVert,
+    effectiveTarget = {lastEffectiveTargets[4], lastEffectiveTargets[3], lastEffectiveTargets[2], lastEffectiveTargets[1]},
+    gripD = {grip.Dwheel[4], grip.Dwheel[3], grip.Dwheel[2], grip.Dwheel[1]},
+    gripConfident = (function() local n=0 for j=1,4 do if grip.confident[j] then n=n+1 end end return n end)(),
+    lowSpeedBoost = lastLowSpeedBoost,
+    frontTrimOffset = ph.frontOffset or 0,
+    frontTrimDirection = ph.frontDirection or 1,
+    slipError = {lastSlipErrors[4], lastSlipErrors[3], lastSlipErrors[2], lastSlipErrors[1]},
+    slipIntegralState = {slipIntegral[4], slipIntegral[3], slipIntegral[2], slipIntegral[1]},
+    slipDerivative = {lastSlipDerivatives[4], lastSlipDerivatives[3], lastSlipDerivatives[2], lastSlipDerivatives[1]},
+    snapUpCount = safety.snapUp
+  }
+end
+
 M.init = init
 M.update = update
 M.reset = reset
 M.clearBrakeEvents = clearBrakeEvents
-M.setProbes = setProbes
-M.setProbeSustain = setProbeSustain
 M.getCounts = getCounts
 M.resetCounts = resetCounts
 M.setPerWheelD = setPerWheelD
+M.setDAggMode = setDAggMode
+M.getTelemetry = getTelemetry
 
 M.getGripDebug = getGripDebug
 

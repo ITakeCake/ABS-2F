@@ -9,6 +9,17 @@ Unlike standard static ABS controllers, this system:
 - **Per-Wheel Optimization:** Each wheel runs its own independent PID control loop and grip estimator, meaning you can brake safely even with two wheels on tarmac and two wheels on wet grass.
 - **Dynamic Vehicle Geometry:** Uses yaw rates and vehicle width/length to calculate the exact speed of *each individual wheel hub* during turns, rather than relying on a single center-of-mass speed.
 
+## Install
+
+1. Copy the repository folder into `%LOCALAPPDATA%\BeamNG.drive\<version>\mods\unpacked\Dynamic_ABS` (or zip it and drop
+   the zip into `mods`).
+2. In the vehicle configurator pick **Dynamic ABS** in the ABS slot (21 vanilla vehicles have the part).
+3. Optional: add the **ABS Grip Gauges** app from the UI app menu to watch per-wheel grip, fused speed and the
+   regime counters.
+
+Development switches live at the top of `lua/vehicle/controller/Dynamic_ABS.lua` (`ENABLE_IMU_LOG`, `USE_FIXED_SLIP_TARGET`,
+the `d2` and `deep` tables). All off or at their tested values by default.
+
 ## Results: 10-run straight-line and 3-run cornering campaign (2026-09-05)
 
 Full tables, charts and the raw CSVs are in [results/RESULTS.md](results/RESULTS.md); spreadsheet layout in
@@ -53,8 +64,8 @@ vary about ±0.05 g from run to run; flat stops repeat within 0.005 g.
 | Stock ABS (BeamNG built-in) | 0.9965 | 910.8 | 0 / 25 | +0.000 |
 | DynamicABS before the bump work (2026-08-31) | 0.9869 | 898.2 | 10 / 25 | -0.145 |
 
-The current build adds fused-speed re-anchoring after pitch events and landings on top of the released controller;
-those changes are not yet in this repository.
+The controller in this repository is the 2026-09-05 build measured above (fused-speed re-anchoring, the non-circular
+per-wheel grip estimator and the banded loose-surface regime).
 
 | Stop | Speed | Stock ABS (g) | DynamicABS (g) | Δ (g) | Stock (m) | DynamicABS (m) |
 |---|---|---|---|---|---|---|
