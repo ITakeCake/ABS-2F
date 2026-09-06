@@ -50,9 +50,9 @@ Dynamic ABS wins every paired stop from 0.10 to 0.25 steer, with a shorter path 
 <img src="results/straight.png" alt="straight line results">
 <img src="results/corner_single.png" alt="single corner results">
 
-The second chart is the same data as a difference, Dynamic ABS minus Stock ABS, per steer input. Top: stopping distance, green bars below zero mean Dynamic ABS stopped shorter. Bottom: how far the car rotated during the stop, bars above zero mean Dynamic ABS turned further. From 0.10 to 0.25 steer Dynamic ABS stops 4 to 15 ft shorter while turning the same amount or less, so the gain is pure braking. At 0.50 and 0.75 steer it stops 3 to 6 ft longer and the car rotates 13 to 18 degrees more, so the distance goes into rotation there.
+The second chart shows how far the car actually rotated during each stop against the same steer inputs. From 0.10 to 0.25 steer Dynamic ABS turns the same amount or slightly less while stopping shorter, so that gain is pure braking. At 0.50 and 0.75 steer it rotates 13 to 18 degrees more than Stock ABS, which is where the extra 1 to 3 m of distance goes.
 
-<img src="results/corner_single_diff.png" alt="single corner difference chart">
+<img src="results/corner_single_rotation.png" alt="single corner rotation">
 
 ### Surfaces and terrain, one run per stop (2026-09-04)
 
