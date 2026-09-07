@@ -63,6 +63,14 @@ These averages hide a real split, so read the per car page before drawing a conc
 | Sand | +0.0141 | 3 |
 | Small jump | +0.0039 | 3 |
 
+
+### Measurement checks
+
+The campaigns ran with the simulation faster than real time and in a headless instance. Both were
+tested against the alternative rather than assumed, forty stops alternating one run at a time. The
+spread across all four combinations was 0.011 g against a run to run spread of 0.026, so neither
+setting changes a result. Detail is in [results/RESULTS.md](results/RESULTS.md).
+
 ## More detail
 
 The wiki carries the per car and per condition breakdown, the full version history, and the testing method in detail: https://github.com/ITakeCake/DynamicABS/wiki

@@ -1,0 +1,10 @@
+ts,phase,car,config,mode,rep,mph,steer1,steer2,brake,runID,dist_m,dist_ft,avg_g,duration_s,actual_start_mph,arc_m,arc_g,steer_input,wheel_angle_deg,understeer_deg,yaw_deg,acs,yaw_rms,yaw_ratio,dmg,codekey,tele_files,wall_s,status,build,controller,trace_2khz
+22:20:55,shootout,etk800,StockABS1.pc,straight,1,60,0.0,0.0,1.0,1788758471-0001,32.7837,107.56,1.1170,2.31,60.0,32.78,1.117,0.00,0.2,0.2,0.8,0.0,1.129,0.2889,0,,0,22.6,OK,stock_ref_0,StockABS,
+22:21:23,shootout,etk800,StockABS1.pc,straight,2,60,0.0,0.0,1.0,1788758499-0002,32.6532,107.13,1.1214,2.31,60.0,32.65,1.121,0.00,0.2,0.1,0.8,0.0,1.167,0.2718,0,,0,22.4,OK,stock_ref_0,StockABS,
+22:21:52,shootout,etk800,StockABS1.pc,straight,3,60,0.0,0.0,1.0,1788758528-0003,33.1002,108.60,1.1063,2.32,60.0,33.10,1.106,0.00,0.2,0.1,0.8,0.0,1.144,0.2866,0,,0,22.1,OK,stock_ref_0,StockABS,
+22:22:20,shootout,etk800,StockABS1.pc,straight,1,120,0.0,0.0,1.0,1788758557-0004,126.6891,415.65,1.1574,4.58,120.0,126.69,1.157,0.00,0.2,0.2,2.0,0.0,2.567,0.1761,0,,0,23.8,OK,stock_ref_0,StockABS,
+22:22:49,shootout,etk800,StockABS1.pc,straight,2,120,0.0,0.0,1.0,1788758587-0005,125.5003,411.75,1.1683,4.55,120.0,125.50,1.168,0.00,0.2,0.2,2.0,0.0,2.559,0.1702,0,,0,24.5,OK,stock_ref_0,StockABS,
+22:23:20,shootout,etk800,StockABS1.pc,straight,3,120,0.0,0.0,1.0,1788758617-0006,127.0659,416.88,1.1539,4.58,120.0,127.07,1.154,0.00,0.2,0.2,2.1,0.0,2.547,0.1836,0,,0,23.7,OK,stock_ref_0,StockABS,
+22:29:57,shootout,etk800,DynamicABS1.pc,straight,1,60,0.0,0.0,1.0,,,,,,,,,,,,,,,,,,,167.1,FAIL: no done-signal in 150s,repo_pre0906,DynamicABS,
+22:38:36,shootout,etk800,DynamicABS1.pc,straight,2,60,0.0,0.0,1.0,,,,,,,,,,,,,,,,,,,165.7,FAIL: no done-signal in 150s,repo_pre0906,DynamicABS,
+22:47:08,shootout,etk800,DynamicABS1.pc,straight,3,60,0.0,0.0,1.0,,,,,,,,,,,,,,,,,,,164.3,FAIL: no done-signal in 150s,repo_pre0906,DynamicABS,
