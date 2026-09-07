@@ -1,3 +1,5 @@
+> This page is the 2026-09-05 campaign, kept for reference. It used the earlier protocol, braking two miles per hour above the recording speed. The current results are in the wiki.
+
 # Results as spreadsheet tables
 
 One row per test condition, the three cars side by side. n = runs, g = average deceleration (kinematic, 2 kHz), dist in metres, yaw = accumulated yaw over the stop in degrees. The same tables are in `results.xlsx` (one sheet each) and the raw per-run rows are in `data/`.
