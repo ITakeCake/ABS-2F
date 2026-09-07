@@ -1,7 +1,7 @@
 # Results
 
 The full result set lives in the wiki, which carries the per car and per condition detail:
-https://github.com/ITakeCake/Adaptive-ABS/wiki
+https://github.com/ITakeCake/DynamicABS/wiki
 
 ## What was measured
 

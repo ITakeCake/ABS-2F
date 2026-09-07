@@ -63,7 +63,7 @@ These averages hide a real split, so read the per car page before drawing a conc
 
 ## More detail
 
-The wiki carries the per car and per condition breakdown, the full version history, and the testing method in detail: https://github.com/ITakeCake/Adaptive-ABS/wiki
+The wiki carries the per car and per condition breakdown, the full version history, and the testing method in detail: https://github.com/ITakeCake/DynamicABS/wiki
 
 Published controller build: V4.00.
 
