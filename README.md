@@ -23,6 +23,8 @@ Every number comes from the same measurement: braking at full pedal, distance ta
 
 The figures below are averaged across every car tested, so they describe the controller rather than any one vehicle. Per car tables and charts are in the wiki.
 
+Tested on BeamNG.drive 0.39.4.0.20972 for the surface areas and BeamNG.tech 0.37.6.0.18775 for straight line and cornering. Four cars, each in a custom configuration rather than a factory trim: an ETK 800 sedan on sport plus tyres, a Hirochi Sunburst on race brakes and race tyres, a Hirochi Scintilla on sport plus tyres, and a Gavril Roamer pickup on all terrain tyres with rear drum brakes. The parts are listed in the wiki.
+
 ### Straight line
 
 | Speed | Average g against stock | Cars |
