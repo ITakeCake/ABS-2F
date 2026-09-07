@@ -29,7 +29,7 @@ Tested on BeamNG.drive 0.39.4.0.20972 for the surface areas and BeamNG.tech 0.37
 
 | Speed | Average g against stock | Cars |
 |---|---|---|
-| 60 miles per hour | +0.0084 | 4 |
+| 60 miles per hour | +0.0046 | 4 |
 | 80 miles per hour | +0.0511 | 4 |
 | 120 miles per hour | +0.0709 | 4 |
 | 160 miles per hour | +0.1146 | 2 |
