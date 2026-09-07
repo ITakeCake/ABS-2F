@@ -5,7 +5,7 @@ https://github.com/ITakeCake/DynamicABS/wiki
 
 ## What was measured
 
-Four cars, the ETK 800, the Hirochi Sunburst, the Hirochi Scintilla and the Gavril Roamer, against the
+Four cars, the ETK 800, the Hirochi SBR4, the Hirochi Scintilla and the Gavril Roamer, against the
 game's own ABS and against the game's ABS with traction control and stability control.
 
 | Campaign | Stops | What it covers |

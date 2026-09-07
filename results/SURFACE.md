@@ -37,7 +37,7 @@ Wins on 3 of 8 areas.
 
 ![Surface Suite Gavril Roamer](charts/surface_roamer.png)
 
-## Hirochi Sunburst
+## Hirochi SBR4
 
 | Area | DynamicABS g | Stock ABS g | Difference |
 |---|---|---|---|
@@ -51,7 +51,7 @@ Wins on 3 of 8 areas.
 
 Wins on 1 of 7 areas.
 
-![Surface Suite Hirochi Sunburst](charts/surface_sbr.png)
+![Surface Suite Hirochi SBR4](charts/surface_sbr.png)
 
 ## Every car
 
