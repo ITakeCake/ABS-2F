@@ -1,1 +1,2 @@
 ts,phase,car,config,mode,rep,mph,steer1,steer2,brake,runID,dist_m,dist_ft,avg_g,duration_s,actual_start_mph,arc_m,arc_g,steer_input,wheel_angle_deg,understeer_deg,yaw_deg,acs,yaw_rms,yaw_ratio,dmg,codekey,tele_files,wall_s,status,car_model,controller,brake_temp_start,brake_temp_end,env_temp
+18:56:31,carcorner,etk800,DynamicABS1.pc,single,1,60,-0.2,0.0,1.0,1788832602-0001,34.2600,112.40,1.0688,2.41,60.0,34.62,1.058,0.20,6.2,3.4,28.4,100.0,26.967,0.3506,0,6b41ae38-d111e559-110747,1,16.2,OK,etk800,DynamicABS,15.0,47.7,15.0
