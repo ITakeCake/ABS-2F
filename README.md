@@ -33,23 +33,11 @@ Tested on BeamNG.drive 0.39.4.0.20972 for the surface areas and BeamNG.tech 0.37
 
 | Speed | Average g against stock | Cars |
 |---|---|---|
-| 60 miles per hour | +0.0137 | 4 |
-| 80 miles per hour | +0.0043 | 4 |
-| 120 miles per hour | +0.0135 | 4 |
-| 160 miles per hour | +0.0395 | 2 |
-| 180 miles per hour | +0.0438 | 2 |
-
-### Cornering
-
-Sweeping left corners at 60 miles per hour with full brake, at the steer angles where the controllers separate most.
-
-These cornering figures are provisional. They were collected before the fresh spawn rule described above, so brake state carries between stops. They are being re measured and this table will be replaced when that finishes.
-
-| Steer | Stopping distance against stock | Cars |
-|---|---|---|
-| 0.20 | -5.32 metres | 4 |
-| 0.50 | -6.12 metres | 4 |
-| 1.00 | -5.98 metres | 4 |
+| 60 miles per hour | +0.0123 | 4 |
+| 80 miles per hour | +0.0058 | 4 |
+| 120 miles per hour | +0.0142 | 4 |
+| 160 miles per hour | +0.0375 | 2 |
+| 180 miles per hour | +0.0430 | 2 |
 
 ### Surfaces
 

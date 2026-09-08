@@ -1,0 +1,1 @@
+ts,phase,car,config,mode,rep,mph,steer1,steer2,brake,runID,dist_m,dist_ft,avg_g,duration_s,actual_start_mph,arc_m,arc_g,steer_input,wheel_angle_deg,understeer_deg,yaw_deg,acs,yaw_rms,yaw_ratio,dmg,codekey,tele_files,wall_s,status,car_model,controller,brake_temp_start,brake_temp_end,env_temp
