@@ -45,9 +45,9 @@ Sweeping left corners at 60 miles per hour with full brake, at the steer angles 
 
 | Steer | Stopping distance against stock | Cars |
 |---|---|---|
-| 0.20 | -3.47 metres | 4 |
-| 0.50 | -4.52 metres | 4 |
-| 1.00 | -5.06 metres | 4 |
+| 0.20 | -3.59 metres | 4 |
+| 0.50 | -4.32 metres | 4 |
+| 1.00 | -4.97 metres | 4 |
 
 ### Surfaces
 
