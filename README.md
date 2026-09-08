@@ -43,13 +43,11 @@ Tested on BeamNG.drive 0.39.4.0.20972 for the surface areas and BeamNG.tech 0.37
 
 Sweeping left corners at 60 miles per hour with full brake, at the steer angles where the controllers separate most.
 
-These cornering figures are provisional. They were collected before the fresh spawn rule described above, so brake state carries between stops. They are being re measured and this table will be replaced when that finishes.
-
 | Steer | Stopping distance against stock | Cars |
 |---|---|---|
-| 0.20 | -5.32 metres | 4 |
-| 0.50 | -6.12 metres | 4 |
-| 1.00 | -5.98 metres | 4 |
+| 0.20 | -3.47 metres | 4 |
+| 0.50 | -4.52 metres | 4 |
+| 1.00 | -5.06 metres | 4 |
 
 ### Surfaces
 
