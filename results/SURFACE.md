@@ -2,6 +2,8 @@
 
 DynamicABS against Stock ABS on the recorded gridmap areas: ice, grass, sand, inclines, a small jump and three bump sections. Average g is the standard metric, higher is better. Every cell is three runs per controller.
 
+These figures are provisional. They were collected before the fresh spawn rule described on the testing method page, so brake heat carries from one stop point to the next within a car and controller block. The straight line and cornering pages do not have that problem. This suite is being re measured and this page will be replaced when it is.
+
 ## ETK 800
 
 | Area | DynamicABS g | Stock ABS g | Difference |
